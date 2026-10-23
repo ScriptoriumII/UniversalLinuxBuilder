@@ -1,0 +1,19 @@
+{
+  "family": "Gentoo",
+  "distribution": "Gentoo",
+  "architecture": "x86_64",
+  "version": "",
+  "desktop": "GNOME",
+  "display": "Wayland",
+  "audio": "PipeWire",
+  "network": "NetworkManager",
+  "init": "systemd",
+  "wifi": true,
+  "bluetooth": true,
+  "printing": true,
+  "calamares": true,
+  "applications": [
+    "Firefox",
+    "VLC"
+  ]
+}
