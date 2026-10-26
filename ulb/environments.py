@@ -218,13 +218,20 @@ def test_manager(env, family):
     return command, wsl(env, command, 60)
 
 
+# Un WSL Arch fraîchement installé n'a pas de trousseau de clés :
+# sans ceci, pacman échoue avec « keyring is not writable ».
+ARCH_KEYRING = (
+    "pacman-key --init && pacman-key --populate archlinux && "
+)
+
+
 def update_repositories(env, family, control=None):
     commands = {
         "Debian": (
             "DEBIAN_FRONTEND=noninteractive apt-get update"
         ),
         "Fedora": "dnf5 makecache --refresh",
-        "Arch Linux": "pacman -Syu --noconfirm",
+        "Arch Linux": ARCH_KEYRING + "pacman -Syu --noconfirm",
         "Gentoo": "emerge --sync",
         "Slackware": "slackpkg update"
     }
@@ -277,7 +284,9 @@ def install_tools(env, family, control=None):
         ),
         "Fedora": "dnf5 -y install " + arguments,
         "Arch Linux": (
-            "pacman -Syu --noconfirm --needed " + arguments
+            ARCH_KEYRING
+            + "pacman -Syu --noconfirm --needed "
+            + arguments
         )
     }
 

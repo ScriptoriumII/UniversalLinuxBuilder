@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.0.1
+- Arch : initialisation du trousseau pacman (`pacman-key --init && --populate archlinux`) avant l'installation des outils et l'actualisation des dépôts (corrige « keyring is not writable »).
+
 ## 2.0
 - **Organisation** : code découpé en package `ulb/` (constantes, WSL, builders, interface…), lanceur `main.py`, anciennes versions déplacées dans `archive/` (et étiquetées `v1.20`, `v1.21`, `v1.22`), fichiers `.pyc` retirés du suivi Git, tests `pytest` et CI.
 - **Opérations longues** : journal en direct (WSL, installation d'outils, actualisation des dépôts, construction ISO), barre de progression, bouton **Annuler**, fermeture sécurisée pendant une opération.
