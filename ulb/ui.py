@@ -13,7 +13,7 @@ from .project import export_project
 from .projects import normalize_project, read_project
 from .checklist import installer_checklist
 from .settings import load_settings, save_settings
-from .logos import fetch_missing_logos, logo
+from .logos import logo
 from .packages import parse_search, search_packages, simulate_packages
 from .wsl import CANCELLED, run
 
@@ -63,7 +63,6 @@ class UniversalLinuxBuilder(QMainWindow):
         self.worker = None
         self.last_iso = ""
         self.boot_smoke = {}
-        self.logo_task = None
         self.mapping_icons = {}
 
         self.analysis_ok = False
@@ -158,7 +157,6 @@ class UniversalLinuxBuilder(QMainWindow):
         self.profile_changed(self.profile.currentText())
         self.restore_project_state()
         self.refresh_wsl()
-        self.start_logo_download()
 
     # --------------------------------------------------------
     # OUTILS GRAPHIQUES
@@ -383,9 +381,6 @@ class UniversalLinuxBuilder(QMainWindow):
 
         self.save_timer.stop()
         self.save_project_state()
-
-        if self.logo_task is not None:
-            self.logo_task.wait(5000)
 
         if worker is None:
             event.accept()
@@ -1660,24 +1655,6 @@ class UniversalLinuxBuilder(QMainWindow):
                 cell.setIcon(
                     QIcon(logo(cell.text(), 18))
                 )
-
-    def start_logo_download(self):
-        self.logo_task = Task(fetch_missing_logos)
-        self.logo_task.done.connect(self.logos_ready)
-        self.logo_task.start()
-
-    def logos_ready(self, count, error):
-        if error or not count:
-            return
-
-        for family, button in self.cards.items():
-            button.setIcon(QIcon(logo(family, 32)))
-
-        for family, icon in self.mapping_icons.items():
-            icon.setPixmap(logo(family, 22))
-
-        self.apply_table_icons()
-        self.update_header()
 
     def environment_item(self, name):
         return next(

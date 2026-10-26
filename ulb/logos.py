@@ -1,26 +1,25 @@
-import urllib.request
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
-import os
+from pathlib import Path
 
-from .constants import COLORS, LOGOS, VERSION, cache_dir
+from .constants import COLORS, LOGOS
+
+
+ASSETS = Path(__file__).resolve().parent / "assets" / "logos"
 
 
 def logo(family, size=36):
-    """Logo depuis le cache local, sans accès réseau.
+    """Logo officiel (Simple Icons, CC0) embarqué dans ulb/assets/logos.
 
-    Sans fichier en cache (premier démarrage, hors ligne), un pastille
-    colorée avec l'initiale est dessinée ; fetch_missing_logos() remplit
-    le cache en arrière-plan.
-    """
+    Aucun accès réseau. Si le fichier manque, une pastille colorée
+    avec l'initiale est dessinée."""
 
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
 
-    filename = cache_dir() / (LOGOS[family] + ".svg")
+    filename = ASSETS / (LOGOS[family] + ".svg")
 
     if filename.exists():
         renderer = QSvgRenderer(str(filename))
@@ -52,50 +51,3 @@ def logo(family, size=36):
     painter.end()
 
     return pixmap
-
-
-def fetch_missing_logos():
-    """Télécharge les logos absents du cache. Retourne le nombre
-    de fichiers obtenus ; s'arrête au premier échec réseau."""
-
-    if os.environ.get("ULB_OFFLINE"):
-        return 0
-
-    cache_dir().mkdir(parents=True, exist_ok=True)
-    fetched = 0
-
-    for family, identifier in LOGOS.items():
-        filename = cache_dir() / (identifier + ".svg")
-
-        if filename.exists():
-            continue
-
-        url = (
-            "https://cdn.simpleicons.org/"
-            + identifier
-            + "/"
-            + COLORS[family].replace("#", "")
-        )
-
-        try:
-            request = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": "UniversalLinuxBuilder/" + VERSION
-                }
-            )
-
-            with urllib.request.urlopen(
-                request,
-                timeout=2
-            ) as response:
-                data = response.read(200000)
-
-        except Exception:
-            break
-
-        if b"<svg" in data[:1000]:
-            filename.write_bytes(data)
-            fetched += 1
-
-    return fetched

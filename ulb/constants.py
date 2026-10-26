@@ -352,12 +352,6 @@ SAFE_PACKAGE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9+_.:/@-]{0,119}$"
 )
 
-def cache_dir():
-    """Dossier des logos (évalué à l'appel, pour les tests)."""
-
-    return Path.home() / ".universal_linux_builder" / "logos"
-
-
 def settings_file():
     """Fichier de réglages persistants (évalué à l'appel)."""
 

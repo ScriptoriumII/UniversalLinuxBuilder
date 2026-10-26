@@ -16,7 +16,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ.setdefault("ULB_OFFLINE", "1")
 
 from ulb.constants import BUILD_TOOLS  # noqa: E402
 

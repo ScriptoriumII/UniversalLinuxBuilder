@@ -6,7 +6,7 @@
 - **Construction** : contrôle de l'espace disque (WSL + Windows), micrologiciels non libres Debian (`non-free-firmware`), copie de l'ISO via `\\wsl.localhost` (repli `cat`), `SHA256SUMS`, nettoyage de l'espace de travail, rapport complet même en cas d'échec ou d'annulation.
 - **Profil Léger** : Xfce, sans impression ni Bluetooth par défaut, Debian sans paquets « recommandés ».
 - **Projet** : sauvegarde automatique de tous les choix, restauration au démarrage, import d'un projet (`universal_linux_project.json`) ou de l'ancien `distribution.json`.
-- **Logos** : chargés en arrière-plan, plus de blocage au démarrage ; pastille de repli hors ligne.
+- **Logos** : vrais logos des distributions embarqués (Simple Icons, CC0, couleurs officielles) — plus aucun accès réseau, affichage immédiat et hors ligne.
 - **Test de démarrage** : QEMU headless (UEFI ou BIOS), capture d'écran et verdict « écran affiché / vide ». Ne valide ni l'installateur ni Ventoy.
 
 ## 1.22
