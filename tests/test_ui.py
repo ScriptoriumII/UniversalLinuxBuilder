@@ -116,3 +116,46 @@ def test_cancel_button_stops_build(fake_wsl, monkeypatch, tmp_path, workspaces):
     assert callbacks == []
     assert window.status.text() == "Opération annulée."
     window.close()
+
+
+@posix_only
+def test_build_shows_percentage_and_stores_history(
+    fake_wsl, monkeypatch, tmp_path, workspaces
+):
+    from ulb.builders import build_iso
+    from ulb.progress import BuildProgress
+
+    monkeypatch.setenv("FAKE_REALISTIC", "1")
+    monkeypatch.setenv("FAKE_STEPS", "1")
+    monkeypatch.setenv("FAKE_DELAY", "0.15")
+    app, window = make_window(fake_wsl, monkeypatch)
+    destination = tmp_path / "iso"
+    destination.mkdir()
+    window.build_family = "Debian"
+    seen = []
+
+    window.job(
+        build_iso,
+        ("Debian", "Debian", "trixie", ["x"], str(destination), "Xfce", {}),
+        window.build_done,
+        window.iso_log,
+        BuildProgress("Debian")
+    )
+
+    start = time.time()
+
+    while window.worker is not None and time.time() - start < 60:
+        app.processEvents()
+        time.sleep(0.03)
+
+        if window.build_tracker is not None:
+            seen.append((window.progress.value(), window.progress.format()))
+
+    values = [value for value, _ in seen]
+
+    assert max(values) > 15
+    assert values == sorted(values)
+    assert any("%p%" in text for _, text in seen)
+    assert window.build_summary and window.build_summary["total"] > 0
+    assert "Debian" in window.config["build_history"]
+    window.close()

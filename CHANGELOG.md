@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.0.6
+- **Pourcentage et temps restant** pendant la construction de l'ISO : la barre affiche « 42 % · Installation des paquets · reste ~8 min (estimation) ». Étapes détectées dans la sortie de la construction (debootstrap, apt, pacman, squashfs, ISO, copie vers Windows) avec compteurs de paquets quand ils existent.
+- Les durées de chaque étape sont mémorisées après chaque construction réussie (`build_history`) : les estimations suivantes sont plus justes. Première construction : poids par défaut. Fedora : pas de compteur, estimation par le temps seulement (temps écoulé à la première construction).
+- Le pourcentage ne recule jamais et reste sous 100 % tant que la construction n'est pas finie.
+
 ## 2.0.5
 - **Flathub** pour les 5 familles : option « Flathub » (paquet flatpak + fichier du dépôt déposé dans `/etc/flatpak/remotes.d` de l'image Debian, Fedora, Arch) et bouton « Ajouter Flathub » dans WSL2 (installe flatpak si absent ; Slackware : instruction manuelle, flatpak n'étant pas dans les paquets officiels).
 - **Fedora, dépôts tiers non libres** : option qui ajoute RPM Fusion libre + non libre et `fedora-workstation-repositories` à l'image (section `%post` du kickstart), et bouton « Dépôts tiers Fedora » dans WSL2.

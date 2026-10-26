@@ -26,7 +26,7 @@ L'onglet **WSL2** détecte les distributions, vérifie/installe les outils de co
 3. **Applications** – recherche de paquets dans le gestionnaire de l'environnement WSL.
 4. **Vérification** – outils, puis analyse des dépendances (simulation).
 5. **Virtualisation** – essayer une ISO dans QEMU/KVM (web noVNC, fenêtre WSLg ou VNC), installer sur un disque virtuel puis démarrer sur ce disque.
-6. **ISO** – profil Standard/Léger, options, **Créer l'ISO**, **Tester le démarrage (QEMU)**.
+6. **ISO** – profil Standard/Léger, options, **Créer l'ISO**, **Tester le démarrage (QEMU)**. La barre de construction affiche un pourcentage et une estimation du temps restant (affinée à chaque construction réussie).
 
 Un dossier de sortie contient : `ULB_<famille>_1.iso`, `SHA256SUMS`, `build_report.txt`
 (et `boot_test_uefi.png` après un test de démarrage).

@@ -5,6 +5,14 @@ case "$1" in
   build)
     : ULB_FAKE_BUILD
     i=0
+    if [ -n "$FAKE_REALISTIC" ]; then
+      d=${FAKE_DELAY:-0.2}
+      for l in "I: Retrieving libc6 2.41" "I: Unpacking libc6" "I: Configuring base-files" "I: Base system installed successfully." "Reading package lists..."; do echo "$l"; sleep $d; done
+      for n in 1 2 3 4 5 6; do echo "Get:$n http://deb.debian.org/debian trixie/main amd64 pkg$n"; sleep $d; done
+      for n in 1 2 3 4 5 6; do echo "Unpacking pkg$n (1.0) ..."; sleep $d; done
+      for n in 1 2 3 4 5 6; do echo "Setting up pkg$n (1.0) ..."; sleep $d; done
+      echo "Parallel mksquashfs: Using 4 processors"; sleep $d
+    fi
     while [ $i -lt ${FAKE_STEPS:-5} ]; do
       i=$((i+1)); echo "P: étape $i/${FAKE_STEPS:-5}"; sleep ${FAKE_DELAY:-0.2}
     done

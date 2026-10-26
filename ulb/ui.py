@@ -8,6 +8,7 @@ from .theme import DARK
 from .tasks import Task
 from .environments import add_fedora_third_party, add_flathub, install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
 from .builders import build_iso
+from .progress import BuildProgress, describe
 from .vmtest import boot_test
 from .vm import INFO_MARKER, URL_MARKER, install_vm_tools, reset_vm_disk, run_vm, stop_vm
 from .project import export_project
@@ -62,6 +63,9 @@ class UniversalLinuxBuilder(QMainWindow):
         self.cards = {}
         self.banners = []
         self.worker = None
+        self.build_tracker = None
+        self.build_summary = None
+        self.build_family = ""
         self.vm_task = None
         self.vm_id = "main"
         self.vm_env = ""
@@ -134,7 +138,7 @@ class UniversalLinuxBuilder(QMainWindow):
         footer.addWidget(self.status, 1)
 
         self.progress = QProgressBar()
-        self.progress.setFixedWidth(260)
+        self.progress.setMinimumWidth(520)
         self.progress.setTextVisible(True)
         self.progress.setVisible(False)
         footer.addWidget(self.progress)
@@ -254,7 +258,7 @@ class UniversalLinuxBuilder(QMainWindow):
             message
         ) == QMessageBox.StandardButton.Yes
 
-    def job(self, function, args, callback, log_view=None):
+    def job(self, function, args, callback, log_view=None, tracker=None):
         if self.worker is not None:
             self.warning(
                 "Une opération est déjà en cours."
@@ -273,7 +277,15 @@ class UniversalLinuxBuilder(QMainWindow):
         if live:
             self.log_view = log_view
             self.log_buffer = []
-            self.progress.setRange(0, 0)
+            self.build_tracker = tracker
+
+            if tracker is not None:
+                self.progress.setRange(0, 100)
+                self.progress.setValue(0)
+                self.progress.setFormat("%p%  ·  Démarrage")
+
+            else:
+                self.progress.setRange(0, 0)
             self.progress.setVisible(True)
             self.cancel_button.setEnabled(True)
             self.cancel_button.setVisible(True)
@@ -308,7 +320,22 @@ class UniversalLinuxBuilder(QMainWindow):
     def queue_log(self, text):
         self.log_buffer.append(text)
 
+        if self.build_tracker is not None:
+            self.build_tracker.feed(text)
+
+    def update_progress_bar(self):
+        tracker = self.build_tracker
+
+        if tracker is None:
+            return
+
+        percent, text = describe(tracker)
+        self.progress.setValue(percent)
+        self.progress.setFormat("%p%  ·  " + text)
+
     def flush_log(self):
+        self.update_progress_bar()
+
         if not self.log_buffer:
             return
 
@@ -332,6 +359,9 @@ class UniversalLinuxBuilder(QMainWindow):
         self.status.setText(lines[-1][:140])
 
     def set_progress(self, value):
+        if self.build_tracker is not None:
+            return
+
         if value is None:
             self.progress.setRange(0, 0)
 
@@ -364,6 +394,13 @@ class UniversalLinuxBuilder(QMainWindow):
 
         self.log_timer.stop()
         self.flush_log()
+
+        tracker, self.build_tracker = self.build_tracker, None
+
+        if tracker is not None and not error:
+            self.build_summary = tracker.summary()
+
+        self.progress.setFormat("%p%")
         self.progress.setVisible(False)
         self.cancel_button.setVisible(False)
         self.status.setText("Prêt")
@@ -3346,6 +3383,11 @@ class UniversalLinuxBuilder(QMainWindow):
         ):
             return
 
+        history = self.config.get("build_history", {})
+
+        self.build_family = family
+        self.build_summary = None
+
         self.job(
             build_iso,
             (
@@ -3358,7 +3400,13 @@ class UniversalLinuxBuilder(QMainWindow):
                 self.build_options()
             ),
             self.build_done,
-            self.iso_log
+            self.iso_log,
+            BuildProgress(
+                family,
+                history.get(family)
+                if isinstance(history, dict)
+                else None
+            )
         )
 
     def build_done(self, data, error):
@@ -3376,6 +3424,18 @@ class UniversalLinuxBuilder(QMainWindow):
             return
 
         files, report = data
+
+        if self.build_summary:
+            history = self.config.setdefault("build_history", {})
+
+            if isinstance(history, dict):
+                history[self.build_family] = self.build_summary
+
+                try:
+                    save_settings(self.config)
+
+                except OSError:
+                    pass
 
         if files:
             self.last_iso = files[0]["file"]
