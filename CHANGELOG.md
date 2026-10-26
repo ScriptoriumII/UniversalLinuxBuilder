@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.0.5
+- **Flathub** pour les 5 familles : option « Flathub » (paquet flatpak + fichier du dépôt déposé dans `/etc/flatpak/remotes.d` de l'image Debian, Fedora, Arch) et bouton « Ajouter Flathub » dans WSL2 (installe flatpak si absent ; Slackware : instruction manuelle, flatpak n'étant pas dans les paquets officiels).
+- **Fedora, dépôts tiers non libres** : option qui ajoute RPM Fusion libre + non libre et `fedora-workstation-repositories` à l'image (section `%post` du kickstart), et bouton « Dépôts tiers Fedora » dans WSL2.
+- `curl` ajouté aux outils de construction (Debian, Fedora, Arch).
+
 ## 2.0.4
 - **Onglet Virtualisation** (avant ISO) : machine QEMU/KVM réglée d'après le projet (UEFI/BIOS, RAM selon le bureau, virtio), démarrage sur une ISO ou sur le disque virtuel persistant (test d'installation puis de GRUB), variables UEFI conservées, affichage web noVNC, fenêtre WSLg ou client VNC, arrêt propre, installation des outils.
 

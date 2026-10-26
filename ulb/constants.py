@@ -3,7 +3,7 @@ import os
 import re
 
 
-VERSION = "2.0.4"
+VERSION = "2.0.5"
 
 FAMILIES = [
     "Debian",
@@ -72,7 +72,8 @@ BUILD_TOOLS = {
         ("lb", "live-build"),
         ("mksquashfs", "squashfs-tools"),
         ("xorriso", "xorriso"),
-        ("grub-mkrescue", "grub-common")
+        ("grub-mkrescue", "grub-common"),
+        ("curl", "curl")
     ],
     "Fedora": [
         ("dnf5", "dnf5"),
@@ -84,14 +85,16 @@ BUILD_TOOLS = {
         ("ksflatten", "pykickstart"),
         # Kickstarts : paquet des dépôts, ou à défaut clonage git.
         ("rpm:fedora-kickstarts|spin-kickstarts|git", "fedora-kickstarts (ou git)"),
-        ("rpm:lorax-lmc-novirt", "lorax-lmc-novirt")
+        ("rpm:lorax-lmc-novirt", "lorax-lmc-novirt"),
+        ("curl", "curl")
     ],
     "Arch Linux": [
         ("pacman", "pacman"),
         ("mkarchiso", "archiso"),
         ("mksquashfs", "squashfs-tools"),
         ("xorriso", "libisoburn"),
-        ("grub-mkrescue", "grub")
+        ("grub-mkrescue", "grub"),
+        ("curl", "curl")
     ],
     "Gentoo": [
         ("emerge", "sys-apps/portage"),
@@ -321,31 +324,36 @@ EXTRAS = {
         "Wi-Fi": ["wpasupplicant"],
         "Bluetooth": ["bluez"],
         "Impression": ["cups"],
-        "Firmware": ["firmware-linux-free"]
+        "Firmware": ["firmware-linux-free"],
+        "Flathub": ["flatpak"]
     },
     "Fedora": {
         "Wi-Fi": ["NetworkManager-wifi"],
         "Bluetooth": ["bluez"],
         "Impression": ["cups"],
-        "Firmware": ["linux-firmware"]
+        "Firmware": ["linux-firmware"],
+        "Flathub": ["flatpak"]
     },
     "Arch Linux": {
         "Wi-Fi": ["iwd"],
         "Bluetooth": ["bluez"],
         "Impression": ["cups"],
-        "Firmware": ["linux-firmware"]
+        "Firmware": ["linux-firmware"],
+        "Flathub": ["flatpak"]
     },
     "Gentoo": {
         "Wi-Fi": ["net-wireless/iwd"],
         "Bluetooth": ["net-wireless/bluez"],
         "Impression": ["net-print/cups"],
-        "Firmware": ["sys-kernel/linux-firmware"]
+        "Firmware": ["sys-kernel/linux-firmware"],
+        "Flathub": ["sys-apps/flatpak"]
     },
     "Slackware": {
         "Wi-Fi": ["wpa_supplicant"],
         "Bluetooth": ["bluez"],
         "Impression": ["cups"],
-        "Firmware": ["kernel-firmware"]
+        "Firmware": ["kernel-firmware"],
+        "Flathub": ["flatpak"]
     }
 }
 
@@ -445,3 +453,19 @@ VM_RAM = {
 VM_DISPLAYS = ["Web (noVNC)", "Fenêtre (WSLg)", "VNC (client externe)"]
 VM_BOOTS = ["ISO (installation)", "Disque (après installation)"]
 VM_WORKDIR = "/var/tmp/ulb-vm"
+
+# Flathub : fichier de dépôt officiel, déposé dans /etc/flatpak/remotes.d
+# de l'image (flatpak l'ajoute comme dépôt système).
+FLATHUB_URL = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+FLATHUB_REMOTE_DIR = "etc/flatpak/remotes.d"
+
+# RPM Fusion (Fedora) : dépôts « libre » et « non libre ».
+RPMFUSION_URLS = (
+    "https://mirrors.rpmfusion.org/free/fedora/"
+    "rpmfusion-free-release-{release}.noarch.rpm",
+    "https://mirrors.rpmfusion.org/nonfree/fedora/"
+    "rpmfusion-nonfree-release-{release}.noarch.rpm"
+)
+
+# Options de l'onglet Système propres à une famille.
+FEDORA_THIRD_PARTY = "Dépôts tiers non libres (Fedora)"

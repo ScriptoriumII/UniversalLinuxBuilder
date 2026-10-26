@@ -1,6 +1,11 @@
 import re
 import shlex
-from .constants import BUILD_TOOLS, MANAGER_BINARY
+from .constants import (
+    BUILD_TOOLS,
+    FLATHUB_URL,
+    MANAGER_BINARY,
+    RPMFUSION_URLS
+)
 from .wsl import execute, run, stream, wsl
 
 
@@ -353,3 +358,80 @@ def install_distribution(name, control):
     )
 
     return output, "", code
+
+
+# ------------------------------------------------------------
+# FLATHUB ET DEPOTS TIERS DANS L'ENVIRONNEMENT WSL
+# ------------------------------------------------------------
+
+FLATPAK_INSTALL = {
+    "Debian": (
+        "DEBIAN_FRONTEND=noninteractive apt-get update && "
+        "DEBIAN_FRONTEND=noninteractive "
+        "apt-get install -y --no-install-recommends flatpak"
+    ),
+    "Fedora": "dnf5 -y install flatpak",
+    "Arch Linux": "pacman -S --noconfirm --needed flatpak",
+    "Gentoo": "emerge --noreplace sys-apps/flatpak"
+}
+
+
+def flathub_command(family):
+    """Installe flatpak si besoin, puis déclare Flathub (système)."""
+
+    if family == "Slackware":
+        install = (
+            'echo "Slackware : flatpak n\'est pas dans les paquets '
+            "officiels (SlackBuilds.org) : installe-le d'abord, "
+            'puis relance." >&2; exit 2'
+        )
+
+    elif family in FLATPAK_INSTALL:
+        install = FLATPAK_INSTALL[family]
+
+    else:
+        raise RuntimeError("Famille inconnue : " + family)
+
+    arch = "pacman-key --init && pacman-key --populate archlinux && "
+
+    return (
+        "if ! command -v flatpak >/dev/null 2>&1; then "
+        + (arch if family == "Arch Linux" else "")
+        + install
+        + "; fi; "
+        "flatpak remote-add --system --if-not-exists flathub "
+        + FLATHUB_URL
+        + " && flatpak remotes --system"
+    )
+
+
+def add_flathub(env, family, control=None):
+    command = flathub_command(family)
+
+    return command, execute(
+        env, command, 3600, root=True, control=control
+    )
+
+
+def fedora_third_party_command(release_expr="$(rpm -E %fedora)"):
+    urls = " ".join(
+        url.format(release=release_expr) for url in RPMFUSION_URLS
+    )
+
+    return (
+        "dnf5 -y install " + urls + " fedora-workstation-repositories"
+        " && { command -v fedora-third-party >/dev/null 2>&1 "
+        "&& fedora-third-party enable || true; }"
+        " && dnf5 repolist"
+    )
+
+
+def add_fedora_third_party(env, family, control=None):
+    if family != "Fedora":
+        raise RuntimeError("Réservé à Fedora.")
+
+    command = fedora_third_party_command()
+
+    return command, execute(
+        env, command, 3600, root=True, control=control
+    )

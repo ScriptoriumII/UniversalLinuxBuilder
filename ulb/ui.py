@@ -3,10 +3,10 @@ import json
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
-from .constants import AUDIO, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
+from .constants import AUDIO, FEDORA_THIRD_PARTY, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
 from .theme import DARK
 from .tasks import Task
-from .environments import install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
+from .environments import add_fedora_third_party, add_flathub, install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
 from .builders import build_iso
 from .vmtest import boot_test
 from .vm import INFO_MARKER, URL_MARKER, install_vm_tools, reset_vm_disk, run_vm, stop_vm
@@ -846,7 +846,9 @@ class UniversalLinuxBuilder(QMainWindow):
             ("Wi-Fi", True),
             ("Bluetooth", True),
             ("Impression", False),
-            ("Firmware", True)
+            ("Firmware", True),
+            ("Flathub", True),
+            (FEDORA_THIRD_PARTY, False)
         ]:
             checkbox = QCheckBox(name)
             checkbox.setChecked(enabled)
@@ -1634,6 +1636,20 @@ class UniversalLinuxBuilder(QMainWindow):
             )
         )
 
+        row.addWidget(
+            self.button(
+                "Ajouter Flathub",
+                self.add_flathub_clicked
+            )
+        )
+
+        row.addWidget(
+            self.button(
+                "Dépôts tiers Fedora",
+                self.add_fedora_third_party_clicked
+            )
+        )
+
         tools_layout.addLayout(row)
 
         self.wsl_tools_table = self.table([
@@ -1786,6 +1802,10 @@ class UniversalLinuxBuilder(QMainWindow):
         )
 
         self.kernel.setCurrentText("Stable")
+
+        self.flags[FEDORA_THIRD_PARTY].setEnabled(
+            family == "Fedora"
+        )
 
         self.installer_label.setText(
             INSTALLERS[family]
@@ -2438,6 +2458,83 @@ class UniversalLinuxBuilder(QMainWindow):
     # --------------------------------------------------------
     # WSL2 : ACTUALISATION DES DEPOTS
     # --------------------------------------------------------
+
+    def add_flathub_clicked(self):
+        name = self.selected_environment()
+
+        if not name:
+            return
+
+        family = self.environment_family(name)
+
+        if family not in MANAGER_BINARY:
+            self.warning("Famille Linux inconnue.")
+            return
+
+        if not self.confirm(
+            "Ajouter le dépôt Flathub (Flatpak, niveau système) "
+            "dans " + name + " ?\n\n"
+            "Flatpak sera installé s'il est absent."
+        ):
+            return
+
+        self.job(
+            add_flathub,
+            (name, family),
+            self.repo_command_done,
+            self.wsl_log
+        )
+
+    def add_fedora_third_party_clicked(self):
+        name = self.selected_environment()
+
+        if not name:
+            return
+
+        family = self.environment_family(name)
+
+        if family != "Fedora":
+            self.warning(
+                "Les dépôts tiers (RPM Fusion libre et non libre, "
+                "fedora-workstation-repositories) concernent "
+                "uniquement Fedora."
+            )
+            return
+
+        if not self.confirm(
+            "Activer RPM Fusion (libre et non libre) et les dépôts "
+            "tiers de Fedora dans " + name + " ?\n\n"
+            "Ces dépôts contiennent des logiciels non libres."
+        ):
+            return
+
+        self.job(
+            add_fedora_third_party,
+            (name, family),
+            self.repo_command_done,
+            self.wsl_log
+        )
+
+    def repo_command_done(self, data, error):
+        if error:
+            self.show_wsl_log(error)
+            self.warning("Opération impossible :\n" + error)
+            return
+
+        command, response = data
+        output, stderr, code = response
+
+        self.show_wsl_log(
+            "Commande : " + command
+            + "\nCode : " + str(code)
+            + "\n\n" + output[-9000:] + "\n" + stderr[-3000:]
+        )
+
+        if code:
+            self.warning("Échec. Consulte le journal.")
+
+        else:
+            self.information("Dépôt ajouté.")
 
     def update_selected_repositories(self):
         name = self.selected_environment()
@@ -3151,6 +3248,11 @@ class UniversalLinuxBuilder(QMainWindow):
             "firmware": (
                 self.family_name == "Debian"
                 and self.firmware_option.isChecked()
+            ),
+            "flathub": self.flags["Flathub"].isChecked(),
+            "third_party": (
+                self.family_name == "Fedora"
+                and self.flags[FEDORA_THIRD_PARTY].isChecked()
             ),
             "cleanup": self.cleanup_option.isChecked()
         }

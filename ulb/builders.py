@@ -8,6 +8,9 @@ from pathlib import Path
 
 from .constants import (
     BUILD_FAMILIES,
+    FLATHUB_REMOTE_DIR,
+    FLATHUB_URL,
+    RPMFUSION_URLS,
     DEBIAN_FIRMWARE,
     FEDORA_KICKSTARTS,
     FEDORA_LIVE_REQUIRED,
@@ -26,6 +29,31 @@ CHUNK = 4 * 1024 * 1024
 
 def quote_all(names):
     return " ".join(shlex.quote(name) for name in names)
+
+
+def fetch_command(url, target):
+    """curl, à défaut wget ; échoue clairement si le réseau manque."""
+
+    return (
+        "{ if command -v curl >/dev/null 2>&1; then "
+        "curl -fsSL " + shlex.quote(url) + " -o " + shlex.quote(target)
+        + "; else wget -qO " + shlex.quote(target) + " "
+        + shlex.quote(url) + "; fi; } || { echo "
+        + shlex.quote("Téléchargement impossible : " + url)
+        + " >&2; exit 1; }"
+    )
+
+
+def flathub_include(root):
+    """Commande déposant le fichier du dépôt Flathub sous `root`
+    (racine du système de fichiers de l'image)."""
+
+    directory = root.rstrip("/") + "/" + FLATHUB_REMOTE_DIR
+
+    return (
+        "mkdir -p " + shlex.quote(directory) + "; "
+        + fetch_command(FLATHUB_URL, directory + "/flathub.flatpakrepo")
+    )
 
 
 def debian_script(workspace, release, packages, options):
@@ -64,11 +92,46 @@ def debian_script(workspace, release, packages, options):
         'printf "%s\\n" '
         + quote_all(sorted(set(package_list)))
         + " > config/package-lists/ulb.list.chroot; "
-        "lb build"
+        + (
+            flathub_include("config/includes.chroot") + "; "
+            if options.get("flathub")
+            else ""
+        )
+        + "lb build"
     )
 
 
-def fedora_script(workspace, release, packages, desktop):
+def fedora_post_lines(release, options):
+    """Section %post ajoutée au kickstart (exécutée dans l'image)."""
+
+    lines = []
+
+    if options.get("flathub"):
+        directory = "/" + FLATHUB_REMOTE_DIR
+
+        lines += [
+            "mkdir -p " + directory,
+            "curl -fsSL " + FLATHUB_URL + " -o " + directory
+            + "/flathub.flatpakrepo || echo 'ULB: Flathub indisponible'"
+        ]
+
+    if options.get("third_party"):
+        urls = " ".join(
+            url.format(release=release) for url in RPMFUSION_URLS
+        )
+
+        lines += [
+            "pm=$(command -v dnf5 || command -v dnf)",
+            '"$pm" -y install ' + urls
+            + " || echo 'ULB: RPM Fusion indisponible'",
+            "\"$pm\" -y install fedora-workstation-repositories "
+            "|| echo 'ULB: fedora-workstation-repositories indisponible'"
+        ]
+
+    return lines
+
+
+def fedora_script(workspace, release, packages, desktop, options=None):
     if not release.isdigit():
         raise RuntimeError(
             "Version Fedora invalide : " + release
@@ -77,6 +140,16 @@ def fedora_script(workspace, release, packages, desktop):
     kickstart = FEDORA_KICKSTARTS.get(
         desktop,
         FEDORA_KICKSTARTS["Aucun"]
+    )
+
+    post = fedora_post_lines(release, options or {})
+
+    post_command = (
+        "printf '%s\\n' '' '%post' "
+        + quote_all(post)
+        + " '%end' >> flat.ks; "
+        if post
+        else ""
     )
 
     return (
@@ -108,7 +181,8 @@ def fedora_script(workspace, release, packages, desktop):
         + " "
         + quote_all(packages)
         + " '%end' >> flat.ks; "
-        "livemedia-creator --make-iso --no-virt "
+        + post_command
+        + "livemedia-creator --make-iso --no-virt "
         "--ks flat.ks "
         "--project 'Universal Linux Builder' "
         "--releasever " + release + " "
@@ -121,7 +195,8 @@ def fedora_script(workspace, release, packages, desktop):
     )
 
 
-def arch_script(workspace, packages):
+def arch_script(workspace, packages, options=None):
+    options = options or {}
     profile = "/usr/share/archiso/configs/releng"
 
     return (
@@ -142,7 +217,12 @@ def arch_script(workspace, packages):
         "sort -u profile/packages.x86_64 "
         "-o profile/packages.x86_64; "
         "mkdir -p out work; "
-        "mkarchiso -v -w work -o out profile"
+        + (
+            flathub_include("profile/airootfs") + "; "
+            if options.get("flathub")
+            else ""
+        )
+        + "mkarchiso -v -w work -o out profile"
     )
 
 
@@ -414,11 +494,11 @@ def build_iso(
 
     elif family == "Fedora":
         script = fedora_script(
-            workspace, release, packages, desktop
+            workspace, release, packages, desktop, options
         )
 
     else:
-        script = arch_script(workspace, packages)
+        script = arch_script(workspace, packages, options)
 
     code = -1
     files = []

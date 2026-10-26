@@ -153,4 +153,24 @@ def installer_checklist(family, desktop, packages, live_packages):
         "À valider en machine virtuelle puis sur le PC."
     ))
 
+    if "flatpak" in names:
+        if family in ("Debian", "Fedora", "Arch Linux"):
+            rows.append((
+                "Flathub (Flatpak)",
+                "À valider",
+                "flatpak est installé ; le fichier du dépôt Flathub est "
+                "déposé dans /etc/flatpak/remotes.d à la construction "
+                "(jamais testé par cette application)."
+            ))
+
+        else:
+            rows.append((
+                "Flathub (Flatpak)",
+                "À configurer",
+                "flatpak est dans la liste ; ajoute Flathub "
+                "après l'installation : flatpak remote-add "
+                "--if-not-exists flathub "
+                "https://dl.flathub.org/repo/flathub.flatpakrepo"
+            ))
+
     return rows
