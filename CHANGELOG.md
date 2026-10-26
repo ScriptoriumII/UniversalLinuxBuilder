@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.0.9
+- **Dossier de destination déjà utilisé** : l'ISO peut être créée dans un dossier qui contient d'autres ISO ou fichiers. Nom daté (`ULB_Debian_trixie_20261026-173000.iso`), jamais d'écrasement (suffixe `-2`, `-3` si le nom existe), `SHA256SUMS` complété sans effacer les anciennes lignes, rapport `build_report_<date-heure>.txt`.
+- Le dossier doit toujours exister ; l'espace libre Windows est vérifié avant la construction.
+
 ## 2.0.8
 - **Correctif Debian : ISO qui démarre sans interface (« Authentication failure »)**. Cause trouvée dans le code de `live-config` : le composant `0030-user-setup` ne crée l'utilisateur live que si le paquet `user-setup` est installé, or ce paquet (comme `sudo`, `locales`, `keyboard-configuration`, `live-tools`) n'est qu'une *recommandation* de `live-config`. Sans utilisateur, la connexion automatique échoue et l'écran de connexion n'a personne à connecter.
 - Paquets indispensables ajoutés explicitement à l'image Debian (`ulb/precheck.py`) : session live, serveur graphique (Xorg, libinput, pilotes) et greeter `lightdm-gtk-greeter`.

@@ -3347,16 +3347,10 @@ class UniversalLinuxBuilder(QMainWindow):
 
         folder = QFileDialog.getExistingDirectory(
             self,
-            "Choisir un dossier Windows vide"
+            "Choisir le dossier de destination (il peut contenir d'autres fichiers)"
         )
 
         if not folder:
-            return
-
-        if any(Path(folder).iterdir()):
-            self.warning(
-                "Le dossier de destination doit être vide."
-            )
             return
 
         gaps = [

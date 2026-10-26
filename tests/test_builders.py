@@ -67,11 +67,11 @@ def test_build_success(fake_wsl, tmp_path, workspaces):
 
 
 @posix_only
-def test_build_refuses_non_empty_destination(fake_wsl, tmp_path):
-    (tmp_path / "x").write_text("x")
-
-    with pytest.raises(RuntimeError, match="vide"):
-        build_iso("Debian", "Debian", "trixie", [], str(tmp_path))
+def test_build_refuses_missing_destination(fake_wsl, tmp_path):
+    with pytest.raises(RuntimeError, match="n'existe pas"):
+        build_iso(
+            "Debian", "Debian", "trixie", [], str(tmp_path / "absent")
+        )
 
 
 @posix_only
@@ -98,5 +98,27 @@ def test_build_cancel(fake_wsl, tmp_path, monkeypatch, workspaces):
         )
 
     assert time.time() - start < 15
-    assert "ANNULÉ" in (destination / "build_report.txt").read_text()
+    assert "ANNULÉ" in next(destination.glob("build_report_*.txt")).read_text()
     assert not list(destination.glob("*.iso"))
+
+
+@posix_only
+def test_build_in_folder_with_existing_isos(fake_wsl, tmp_path, workspaces):
+    from ulb.builders import build_iso
+
+    destination = tmp_path / "isos"
+    destination.mkdir()
+    (destination / "autre.iso").write_bytes(b"ancienne")
+    (destination / "SHA256SUMS").write_text("abc *autre.iso\n")
+
+    for _ in range(2):
+        files, report = build_iso(
+            "Debian", "Debian", "trixie", ["x"],
+            str(destination), "Xfce", {"cleanup": True}
+        )
+
+    assert (destination / "autre.iso").read_bytes() == b"ancienne"
+    assert len(list(destination.glob("ULB_Debian_trixie_*.iso"))) == 2
+    sums = (destination / "SHA256SUMS").read_text().splitlines()
+    assert sums[0] == "abc *autre.iso" and len(sums) == 3
+    assert len(list(destination.glob("build_report_*.txt"))) == 2

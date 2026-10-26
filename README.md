@@ -28,7 +28,7 @@ L'onglet **WSL2** détecte les distributions, vérifie/installe les outils de co
 5. **Virtualisation** – essayer une ISO dans QEMU/KVM (web noVNC, fenêtre WSLg ou VNC), installer sur un disque virtuel puis démarrer sur ce disque.
 6. **ISO** – profil Standard/Léger, options, **Créer l'ISO**, **Tester le démarrage (QEMU)**. La barre de construction affiche un pourcentage et une estimation du temps restant (affinée à chaque construction réussie).
 
-Un dossier de sortie contient : `ULB_<famille>_1.iso`, `SHA256SUMS`, `build_report.txt`
+Un dossier de sortie contient : `ULB_<famille>_<version>_<date-heure>.iso`, `SHA256SUMS` (complété, jamais écrasé), `build_report_<date-heure>.txt`. Le dossier peut déjà contenir d'autres ISO : tes ISO existantes ne sont jamais écrasées
 (et `boot_test_uefi.png` après un test de démarrage).
 
 ## Limites connues

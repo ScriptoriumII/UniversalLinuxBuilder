@@ -32,6 +32,29 @@ def quote_all(names):
     return " ".join(shlex.quote(name) for name in names)
 
 
+def free_name(directory, name):
+    """Chemin libre dans le dossier : ajoute -2, -3… si le nom existe."""
+
+    target = Path(directory) / name
+    stem, suffix = target.stem, target.suffix
+    number = 2
+
+    while target.exists():
+        target = Path(directory) / (stem + "-" + str(number) + suffix)
+        number += 1
+
+    return target
+
+
+def append_sums(path, lines):
+    """Ajoute des empreintes à SHA256SUMS sans effacer les anciennes."""
+
+    path = Path(path)
+    old = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    new = [line for line in lines if line not in old]
+    path.write_text("\n".join(old + new) + "\n", encoding="utf-8")
+
+
 def fetch_command(url, target):
     """curl, à défaut wget ; échoue clairement si le réseau manque."""
 
@@ -475,9 +498,9 @@ def build_iso(
 
     destination = Path(directory)
 
-    if any(destination.iterdir()):
+    if not destination.is_dir():
         raise RuntimeError(
-            "Le dossier de destination doit être vide."
+            "Le dossier de destination n'existe pas : " + directory
         )
 
     control.check()
@@ -488,6 +511,7 @@ def build_iso(
     )
 
     workspace = "/var/tmp/ulb-" + identifier
+    stamp = identifier[:15]
 
     if family == "Debian":
         script = debian_script(
@@ -563,11 +587,17 @@ def build_iso(
             except (ValueError, IndexError):
                 size = 0
 
-            target = destination / (
+            # le dossier peut déjà contenir d'autres ISO : nom daté,
+            # et jamais d'écrasement d'un fichier existant
+            target = free_name(
+                destination,
                 "ULB_"
                 + family.replace(" ", "_")
                 + "_"
-                + str(index)
+                + release
+                + "_"
+                + stamp
+                + ("_" + str(index) if len(sources) > 1 else "")
                 + ".iso"
             )
 
@@ -600,10 +630,7 @@ def build_iso(
                 "ventoy_tested": False
             })
 
-        (destination / "SHA256SUMS").write_text(
-            "\n".join(sums) + "\n",
-            encoding="utf-8"
-        )
+        append_sums(destination / "SHA256SUMS", sums)
 
         control.progress(100)
         control.log("== Terminé ==")
@@ -654,7 +681,9 @@ def build_iso(
         report = header + "\n".join(control.history)
 
         try:
-            (destination / "build_report.txt").write_text(
+            free_name(
+                destination, "build_report_" + stamp + ".txt"
+            ).write_text(
                 report,
                 encoding="utf-8"
             )
