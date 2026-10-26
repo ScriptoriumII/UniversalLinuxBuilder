@@ -1,0 +1,14 @@
+#!/bin/sh
+# faux QEMU : lit le moniteur sur stdin, écrit un PPM 64x48 avec du contenu
+echo "qemu args: $*" >&2
+while read cmd arg; do
+  case "$cmd" in
+    screendump)
+      if [ -n "$FAKE_BLACK" ]; then
+        { printf 'P6\n64 48\n255\n'; head -c $((64*48*3)) /dev/zero; } > "$arg"
+      else
+        { printf 'P6\n64 48\n255\n'; i=0; while [ $i -lt $((64*48)) ]; do case $((i%3)) in 0) printf '\200\100\300';; 1) printf '\020\220\040';; *) printf '\377\377\377';; esac; i=$((i+1)); done; } > "$arg"
+      fi;;
+    quit) exit 0;;
+  esac
+done

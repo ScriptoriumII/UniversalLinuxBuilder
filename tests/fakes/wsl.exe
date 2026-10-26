@@ -1,0 +1,28 @@
+#!/bin/sh
+# Faux wsl.exe pour tester l'interface hors Windows
+if [ "$1" = "--list" ] && [ "$2" = "--quiet" ]; then
+  printf 'Debian\narchlinux\nUbuntu-24.04\n'; exit 0
+fi
+if [ "$1" = "--list" ] && [ "$2" = "--online" ]; then
+  printf 'NAME            FRIENDLY NAME\n  Debian          Debian GNU/Linux\n  kali-linux      Kali Linux Rolling\n'; exit 0
+fi
+if [ "$1" = "--terminate" ]; then pkill -f '/lb build' 2>/dev/null; exit 0; fi
+if [ "$1" = "-d" ]; then
+  env="$2"; shift 2
+  [ "$1" = "-u" ] && shift 2
+  shift  # --exec
+  [ "$1" != "/bin/sh" ] && exec "$@"
+  shift  # /bin/sh
+  shift  # -lc
+  cmd="$1"
+  case "$cmd" in
+    "cat /etc/os-release")
+      case "$env" in
+        Debian) printf 'ID=debian\nVERSION_ID="13"\nVERSION_CODENAME=trixie\n';;
+        archlinux) printf 'ID=arch\nNAME="Arch Linux"\n';;
+        Ubuntu-24.04) printf 'ID=ubuntu\nID_LIKE=debian\nVERSION_ID="24.04"\nVERSION_CODENAME=noble\n';;
+      esac; exit 0;;
+  esac
+  exec /bin/sh -c "$cmd"
+fi
+echo "commande inattendue: $*" >&2; exit 2

@@ -1,0 +1,16 @@
+#!/bin/sh
+# faux live-build (ULB_FAKE_BUILD)
+case "$1" in
+  config) echo "$@" > config.args; echo "[lb config] $*"; exit 0;;
+  build)
+    : ULB_FAKE_BUILD
+    i=0
+    while [ $i -lt ${FAKE_STEPS:-5} ]; do
+      i=$((i+1)); echo "P: étape $i/${FAKE_STEPS:-5}"; sleep ${FAKE_DELAY:-0.2}
+    done
+    echo "warning sur stderr" >&2
+    head -c 32768 /dev/zero > live-image-amd64.hybrid.iso
+    printf '\001CD001\001' >> live-image-amd64.hybrid.iso
+    head -c 100000 /dev/zero >> live-image-amd64.hybrid.iso
+    echo "[lb build] OK"; exit 0;;
+esac
