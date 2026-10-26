@@ -1,0 +1,4 @@
+#!/bin/sh
+# faux qemu-img : qemu-img create -f qcow2 <fichier> <taille>
+[ "$1" = "create" ] && : > "$4"
+exit 0

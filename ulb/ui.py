@@ -1,14 +1,15 @@
 from pathlib import Path
 import json
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
-from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtCore import QSize, Qt, QTimer
-from .constants import AUDIO, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from .constants import AUDIO, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
 from .theme import DARK
 from .tasks import Task
 from .environments import install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
 from .builders import build_iso
 from .vmtest import boot_test
+from .vm import INFO_MARKER, URL_MARKER, install_vm_tools, reset_vm_disk, run_vm, stop_vm
 from .project import export_project
 from .projects import normalize_project, read_project
 from .checklist import installer_checklist
@@ -61,6 +62,11 @@ class UniversalLinuxBuilder(QMainWindow):
         self.cards = {}
         self.banners = []
         self.worker = None
+        self.vm_task = None
+        self.vm_id = "main"
+        self.vm_env = ""
+        self.vm_url = ""
+        self.vm_ram_auto = True
         self.last_iso = ""
         self.boot_smoke = {}
         self.mapping_icons = {}
@@ -117,6 +123,7 @@ class UniversalLinuxBuilder(QMainWindow):
         self.make_system()
         self.make_applications()
         self.make_verification()
+        self.make_virtualization()
         self.make_iso()
         self.make_wsl()
 
@@ -561,6 +568,9 @@ class UniversalLinuxBuilder(QMainWindow):
     def invalidate(self, *_):
         if hasattr(self, "save_timer"):
             self.save_timer.start()
+
+        if hasattr(self, "vm_ram"):
+            self.refresh_vm_defaults()
 
         self.revision += 1
         self.analysis_ok = False
@@ -1019,6 +1029,308 @@ class UniversalLinuxBuilder(QMainWindow):
     # ISO
     # --------------------------------------------------------
 
+    # --------------------------------------------------------
+    # VIRTUALISATION
+    # --------------------------------------------------------
+
+    def make_virtualization(self):
+        layout = self.page("Virtualisation")
+        self.banner(layout)
+
+        note = QLabel(
+            "Essaie l'image dans une machine virtuelle QEMU/KVM "
+            "réglée d'après le projet : mode UEFI/BIOS, mémoire selon "
+            "le bureau. Un disque virtuel persistant permet de tester "
+            "l'installateur (Calamares / Anaconda) puis de démarrer "
+            "sur le disque installé pour vérifier GRUB."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#8FA4BF;")
+        layout.addWidget(note)
+
+        group = QGroupBox("Machine virtuelle")
+        form = QFormLayout(group)
+
+        iso_row = QHBoxLayout()
+        self.vm_iso = QLineEdit()
+        self.vm_iso.setPlaceholderText(
+            "ISO à démarrer (construite ici ou officielle)"
+        )
+        iso_row.addWidget(self.vm_iso, 1)
+        iso_row.addWidget(
+            self.button("Parcourir…", self.browse_vm_iso)
+        )
+        form.addRow("ISO", iso_row)
+
+        self.vm_boot = self.combo(VM_BOOTS)
+        form.addRow("Démarrage", self.vm_boot)
+
+        self.vm_mode = self.combo(["UEFI", "BIOS"])
+        form.addRow("Firmware", self.vm_mode)
+
+        self.vm_ram = QSpinBox()
+        self.vm_ram.setRange(512, 65536)
+        self.vm_ram.setSingleStep(512)
+        self.vm_ram.setSuffix(" Mo")
+        self.vm_ram.valueChanged.connect(self.vm_ram_edited)
+        form.addRow("Mémoire", self.vm_ram)
+
+        self.vm_cpus = QSpinBox()
+        self.vm_cpus.setRange(1, 32)
+        self.vm_cpus.setValue(2)
+        form.addRow("Processeurs", self.vm_cpus)
+
+        self.vm_disk = QSpinBox()
+        self.vm_disk.setRange(4, 512)
+        self.vm_disk.setValue(32)
+        self.vm_disk.setSuffix(" Go")
+        form.addRow("Disque virtuel", self.vm_disk)
+
+        self.vm_display = self.combo(VM_DISPLAYS)
+        form.addRow("Affichage", self.vm_display)
+
+        layout.addWidget(group)
+
+        row = QHBoxLayout()
+
+        self.vm_start_button = self.button(
+            "Démarrer la machine", self.start_vm
+        )
+        row.addWidget(self.vm_start_button)
+
+        self.vm_stop_button = self.button(
+            "Arrêter", self.stop_vm_clicked
+        )
+        self.vm_stop_button.setEnabled(False)
+        row.addWidget(self.vm_stop_button)
+
+        self.vm_open_button = self.button(
+            "Ouvrir l'affichage web", self.open_vm_display
+        )
+        self.vm_open_button.setEnabled(False)
+        row.addWidget(self.vm_open_button)
+
+        row.addWidget(
+            self.button(
+                "Installer QEMU / noVNC", self.install_vm_tools_clicked
+            )
+        )
+
+        row.addWidget(
+            self.button(
+                "Recréer le disque", self.reset_vm_disk_clicked
+            )
+        )
+
+        row.addStretch()
+        layout.addLayout(row)
+
+        self.vm_log = QTextEdit()
+        self.vm_log.setReadOnly(True)
+        self.vm_log.document().setMaximumBlockCount(5000)
+        layout.addWidget(self.vm_log, 1)
+
+        self.next_button(layout, 5)
+
+        self.refresh_vm_defaults()
+
+    def refresh_vm_defaults(self):
+        if self.vm_ram_auto:
+            self.vm_ram.blockSignals(True)
+            self.vm_ram.setValue(
+                VM_RAM.get(self.desktop.currentText(), 2048)
+            )
+            self.vm_ram.blockSignals(False)
+
+        mode = self.boot_mode.currentText()
+
+        if self.vm_mode.currentText() != mode:
+            self.vm_mode.setCurrentText(mode)
+
+    def vm_ram_edited(self, _value):
+        self.vm_ram_auto = False
+
+    def browse_vm_iso(self):
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choisir l'ISO",
+            self.vm_iso.text() or self.last_iso,
+            "Images ISO (*.iso)"
+        )
+
+        if filename:
+            self.vm_iso.setText(filename)
+
+    def vm_running(self):
+        return self.vm_task is not None and self.vm_task.isRunning()
+
+    def start_vm(self):
+        if self.vm_running():
+            self.warning("La machine virtuelle tourne déjà.")
+            return
+
+        family = self.family_name
+
+        if family not in BUILD_FAMILIES:
+            self.warning(
+                "Virtualisation disponible pour Debian, Fedora "
+                "et Arch Linux."
+            )
+            return
+
+        env = self.project_environment()
+
+        if not env:
+            return
+
+        boot = (
+            "iso"
+            if self.vm_boot.currentIndex() == 0
+            else "disk"
+        )
+
+        display = ["web", "window", "vnc"][
+            self.vm_display.currentIndex()
+        ]
+
+        iso = self.vm_iso.text().strip()
+
+        if boot == "iso" and not Path(iso).is_file():
+            self.warning("Choisis une ISO existante.")
+            return
+
+        self.vm_env = env
+        self.vm_url = ""
+        self.vm_log.clear()
+        self.vm_open_button.setEnabled(False)
+
+        task = Task(
+            run_vm,
+            env,
+            self.vm_id,
+            iso,
+            self.vm_mode.currentText(),
+            boot,
+            self.vm_ram.value(),
+            self.vm_cpus.value(),
+            self.vm_disk.value(),
+            display
+        )
+
+        task.log.connect(self.vm_line)
+        task.done.connect(self.vm_finished)
+        self.vm_task = task
+
+        self.vm_start_button.setEnabled(False)
+        self.vm_stop_button.setEnabled(True)
+
+        task.start()
+
+    def vm_line(self, text):
+        if text.startswith(URL_MARKER):
+            self.vm_url = text[len(URL_MARKER):].strip()
+            self.vm_open_button.setEnabled(True)
+            self.vm_log.insertPlainText(
+                "Affichage web : " + self.vm_url + "\n"
+            )
+            QDesktopServices.openUrl(QUrl(self.vm_url))
+            return
+
+        if text.startswith(INFO_MARKER):
+            text = text[len(INFO_MARKER):]
+
+        self.vm_log.insertPlainText(text + "\n")
+
+    def vm_finished(self, result, error):
+        self.vm_start_button.setEnabled(True)
+        self.vm_stop_button.setEnabled(False)
+        self.vm_open_button.setEnabled(False)
+
+        self.vm_log.insertPlainText(
+            "\n===== MACHINE ARRÊTÉE =====\n"
+            + (error + "\n" if error else "")
+        )
+
+    def stop_vm_clicked(self):
+        if not self.vm_running():
+            return
+
+        self.vm_task.cancel()
+
+        self.vm_stopper = Task(
+            stop_vm, self.vm_env, self.vm_id
+        )
+        self.vm_stopper.start()
+
+    def open_vm_display(self):
+        if self.vm_url:
+            QDesktopServices.openUrl(QUrl(self.vm_url))
+
+    def install_vm_tools_clicked(self):
+        env = self.selected_or_project_environment()
+
+        if not env:
+            return
+
+        family = self.environment_family(env)
+
+        if not self.confirm(
+            "Installer QEMU, OVMF et noVNC dans " + env + " ?\n\n"
+            "Les paquets sont installés un par un ; ceux "
+            "introuvables sont signalés dans le journal."
+        ):
+            return
+
+        self.job(
+            install_vm_tools,
+            (env, family),
+            self.vm_tools_done,
+            self.vm_log
+        )
+
+    def selected_or_project_environment(self):
+        name = self.associations.get(self.family_name, "")
+
+        if self.environment_item(name) is not None:
+            return name
+
+        return self.project_environment()
+
+    def vm_tools_done(self, data, error):
+        if error:
+            self.vm_log.insertPlainText("\nERREUR : " + error + "\n")
+            return
+
+        self.vm_log.insertPlainText(
+            "\n===== INSTALLATION TERMINÉE =====\n"
+            "Cherche « ÉCHEC : » ci-dessus pour les paquets "
+            "introuvables.\n"
+        )
+
+    def reset_vm_disk_clicked(self):
+        env = self.selected_or_project_environment()
+
+        if not env or self.vm_running():
+            if self.vm_running():
+                self.warning("Arrête d'abord la machine.")
+
+            return
+
+        if not self.confirm(
+            "Supprimer le disque virtuel et les variables UEFI ?\n\n"
+            "Le système installé dans la machine sera perdu."
+        ):
+            return
+
+        self.job(
+            reset_vm_disk,
+            (env,),
+            lambda data, error: self.vm_log.insertPlainText(
+                ("Erreur : " + error if error else "Disque supprimé.")
+                + "\n"
+            )
+        )
+
     def make_iso(self):
         layout = self.page("ISO")
         self.banner(layout)
@@ -1130,12 +1442,12 @@ class UniversalLinuxBuilder(QMainWindow):
             )
         )
 
-        self.vm_mode = self.combo(["UEFI", "BIOS"])
-        vm_row.addWidget(self.vm_mode)
+        self.smoke_mode = self.combo(["UEFI", "BIOS"])
+        vm_row.addWidget(self.smoke_mode)
 
-        self.vm_wait = self.combo(["60 s", "120 s", "240 s"])
-        self.vm_wait.setCurrentText("120 s")
-        vm_row.addWidget(self.vm_wait)
+        self.smoke_wait = self.combo(["60 s", "120 s", "240 s"])
+        self.smoke_wait.setCurrentText("120 s")
+        vm_row.addWidget(self.smoke_wait)
 
         vm_row.addWidget(
             QLabel(
@@ -1849,7 +2161,7 @@ class UniversalLinuxBuilder(QMainWindow):
                 + " dans l'onglet WSL2."
             )
 
-            self.tabs.setCurrentIndex(5)
+            self.tabs.setCurrentIndex(6)
             self.wsl_sections.setCurrentIndex(2)
 
             return ""
@@ -2758,8 +3070,8 @@ class UniversalLinuxBuilder(QMainWindow):
         if not filename:
             return
 
-        mode = self.vm_mode.currentText()
-        wait = int(self.vm_wait.currentText().split()[0])
+        mode = self.smoke_mode.currentText()
+        wait = int(self.smoke_wait.currentText().split()[0])
 
         if not self.confirm(
             "Démarrer l'ISO dans QEMU (" + mode + ") et "
@@ -2965,6 +3277,7 @@ class UniversalLinuxBuilder(QMainWindow):
 
         if files:
             self.last_iso = files[0]["file"]
+            self.vm_iso.setText(self.last_iso)
 
         self.iso_log.insertPlainText(
             "\n===== RÉSULTAT =====\n"

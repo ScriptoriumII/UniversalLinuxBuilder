@@ -3,7 +3,7 @@ import os
 import re
 
 
-VERSION = "2.0.3"
+VERSION = "2.0.4"
 
 FAMILIES = [
     "Debian",
@@ -411,3 +411,37 @@ OVMF_CANDIDATES = [
     "/usr/share/edk2/ovmf/OVMF_CODE.fd",
     "/usr/share/qemu/OVMF_CODE.fd"
 ]
+
+# Machine virtuelle (onglet Virtualisation) : outils à installer dans
+# l'environnement WSL. Installés un par un : un nom introuvable n'empêche
+# pas les autres.
+VM_PACKAGES = {
+    "Debian": [
+        "qemu-system-x86", "qemu-utils", "qemu-system-gui",
+        "ovmf", "novnc"
+    ],
+    "Fedora": [
+        "qemu-system-x86-core", "qemu-img", "qemu-ui-gtk",
+        "edk2-ovmf", "novnc"
+    ],
+    "Arch Linux": ["qemu-desktop", "edk2-ovmf", "novnc"]
+}
+
+NOVNC_DIRECTORIES = [
+    "/usr/share/novnc",
+    "/usr/share/webapps/novnc",
+    "/usr/share/noVNC"
+]
+
+# RAM (Mo) conseillée pour essayer le système selon le bureau choisi.
+VM_RAM = {
+    "Aucun": 2048,
+    "Xfce": 3072,
+    "Budgie": 4096,
+    "GNOME": 4096,
+    "KDE Plasma": 4096
+}
+
+VM_DISPLAYS = ["Web (noVNC)", "Fenêtre (WSLg)", "VNC (client externe)"]
+VM_BOOTS = ["ISO (installation)", "Disque (après installation)"]
+VM_WORKDIR = "/var/tmp/ulb-vm"

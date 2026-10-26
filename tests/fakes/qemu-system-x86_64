@@ -1,6 +1,13 @@
 #!/bin/sh
-# faux QEMU : lit le moniteur sur stdin, écrit un PPM 64x48 avec du contenu
+# faux QEMU
 echo "qemu args: $*" >&2
+case "$*" in
+  *"-name ulb-vm-"*)
+    # machine virtuelle : tourne jusqu'à ce qu'on l'arrête
+    trap 'exit 0' TERM INT
+    echo "ULB_FAKE_VM_RUNNING"
+    while :; do sleep 0.2; done;;
+esac
 while read cmd arg; do
   case "$cmd" in
     screendump)
