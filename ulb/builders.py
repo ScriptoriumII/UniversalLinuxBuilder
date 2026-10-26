@@ -86,9 +86,16 @@ def fedora_script(workspace, release, packages, desktop):
         "base=$(rpm -ql fedora-kickstarts spin-kickstarts 2>/dev/null "
         "| grep '/fedora-live-base[.]ks$' "
         "| head -n 1 || true); "
-        'test -n "$base" || { '
-        'echo "Les kickstarts (fedora-kickstarts / spin-kickstarts) ne fournissent pas '
-        'fedora-live-base.ks" >&2; exit 1; }; '
+        'if [ -z "$base" ]; then '
+        'echo "Kickstarts absents des paquets : clonage git '
+        '(pagure.io/fedora-kickstarts, branche f' + release + ')"; '
+        "git clone --depth 1 --branch f" + release + " "
+        "https://pagure.io/fedora-kickstarts.git kickstarts "
+        "|| { echo 'Clonage impossible (réseau, ou branche f"
+        + release + " absente).' >&2; exit 1; }; "
+        'base="$PWD/kickstarts/fedora-live-base.ks"; fi; '
+        'test -f "$base" || { '
+        'echo "fedora-live-base.ks introuvable" >&2; exit 1; }; '
         'dir=$(dirname "$base"); '
         'ks="$dir"/' + shlex.quote(kickstart) + "; "
         'test -f "$ks" || { '

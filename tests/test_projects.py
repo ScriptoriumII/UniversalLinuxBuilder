@@ -51,13 +51,18 @@ def test_arch_commands_initialise_the_keyring(monkeypatch):
     ) and len(seen) == 2
 
 
-def test_fedora_kickstarts_package_name_is_resolved():
+def test_fedora_kickstarts_have_a_git_fallback():
+    from ulb.builders import fedora_script
     from ulb.environments import fedora_install_command
 
     command = fedora_install_command(["fedora-kickstarts", "lorax"])
     assert "--whatprovides '*/fedora-live-base.ks'" in command
-    assert "spin-kickstarts" in command and "lorax" in command
+    assert "ks=git" in command and "lorax" in command
     assert fedora_install_command(["lorax"]) == "dnf5 -y install lorax"
+
+    script = fedora_script("/var/tmp/x", "44", ["a"], "Xfce")
+    assert "git clone --depth 1 --branch f44" in script
+    assert "pagure.io/fedora-kickstarts" in script
 
 
 def test_rpm_tool_states_are_parsed(monkeypatch):

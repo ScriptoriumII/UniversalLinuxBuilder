@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.0.3
+- Fedora : si aucun paquet de kickstarts (`fedora-kickstarts` / `spin-kickstarts`) n'existe dans les dépôts, installation de git et clonage de `pagure.io/fedora-kickstarts` (branche `fN`) à la construction.
+
 ## 2.0.2
 - Fedora : le paquet des kickstarts est résolu dynamiquement (`fedora-kickstarts` ou `spin-kickstarts` selon la version) au lieu d'échouer avec « No match for argument ».
 

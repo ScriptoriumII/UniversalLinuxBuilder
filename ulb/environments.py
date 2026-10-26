@@ -251,25 +251,36 @@ def update_repositories(env, family, control=None):
 
 
 def fedora_install_command(missing):
-    """Installe les paquets manquants ; le paquet des kickstarts est
-    résolu par le fichier qu'il fournit, car son nom varie
-    (fedora-kickstarts / spin-kickstarts)."""
+    """Installe les paquets manquants.
 
-    others = " ".join(
-        shlex.quote(name)
-        for name in missing
-        if name != "fedora-kickstarts"
-    )
+    Les kickstarts ne sont pas fournis sous le même nom selon les
+    versions (fedora-kickstarts / spin-kickstarts), ni parfois dans les
+    dépôts : à défaut de paquet, on installe git et la construction
+    clonera https://pagure.io/fedora-kickstarts."""
 
-    if "fedora-kickstarts" not in missing:
+    names = [
+        name for name in missing
+        if not name.startswith("fedora-kickstarts")
+    ]
+
+    others = " ".join(shlex.quote(name) for name in names)
+
+    if len(names) == len(missing):
         return "dnf5 -y install " + others
 
     return (
         "ks=$(dnf5 repoquery -q --whatprovides "
         "'*/fedora-live-base.ks' 2>/dev/null "
         "| sed 's/-[0-9].*//' | sort -u | head -n 1); "
-        'ks=${ks:-spin-kickstarts}; '
+        'if [ -z "$ks" ]; then '
+        "for c in fedora-kickstarts spin-kickstarts; do "
+        'if dnf5 repoquery -q --available "$c" 2>/dev/null '
+        '| grep -q .; then ks=$c; break; fi; done; fi; '
+        'if [ -n "$ks" ]; then '
         'echo "Paquet des kickstarts : $ks"; '
+        "else "
+        'echo "Aucun paquet de kickstarts dans les dépôts : '
+        'repli sur git (pagure.io)"; ks=git; fi; '
         'dnf5 -y install "$ks" ' + others
     )
 
