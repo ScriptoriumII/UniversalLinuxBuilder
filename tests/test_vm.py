@@ -85,3 +85,13 @@ def test_vm_starts_and_stops_from_the_ui(fake_wsl, monkeypatch, tmp_path):
     assert "MACHINE ARRÊTÉE" in window.vm_log.toPlainText()
     window.close()
     time.sleep(0.2)
+
+
+def test_web_script_waits_for_display_and_has_novnc_fallback():
+    script = vm_script("t", "", "BIOS", "disk", 2048, 1, 8, "web")
+
+    assert subprocess.run(["sh", "-n", "-c", script]).returncode == 0
+    assert "git clone --depth 1 https://github.com/novnc/noVNC.git" in script
+    assert "& qpid=$!" in script and "wait $qpid" in script
+    assert "create_connection(('127.0.0.1',5700)" in script
+    assert script.index("ready=0") < script.index(URL_MARKER)

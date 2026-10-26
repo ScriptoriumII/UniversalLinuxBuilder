@@ -121,18 +121,27 @@ def vm_script(
         directories = " ".join(shlex.quote(d) for d in NOVNC_DIRECTORIES)
 
         parts.append(
-            'nv=""; for d in ' + directories + "; do "
+            'nv=""; for d in ' + directories + " " + shlex.quote(
+                VM_WORKDIR + "/noVNC"
+            ) + "; do "
             '[ -f "$d/vnc.html" ] && { nv="$d"; break; }; done; '
-            'test -n "$nv" || { echo "noVNC introuvable : installe '
-            'le paquet novnc (ou choisis un autre affichage)" >&2; '
-            "exit 3; }; "
+            # paquet absent : copie officielle de noVNC (git)
+            'if [ -z "$nv" ] && command -v git >/dev/null; then '
+            'echo "' + INFO_MARKER + 'noVNC absent : téléchargement '
+            'depuis GitHub..."; '
+            "git clone --depth 1 https://github.com/novnc/noVNC.git "
+            + shlex.quote(VM_WORKDIR + "/noVNC")
+            + " >/dev/null 2>&1 && nv=" + shlex.quote(VM_WORKDIR + "/noVNC")
+            + "; fi; "
+            'test -n "$nv" || { echo "noVNC introuvable : clique sur '
+            "« Installer QEMU / noVNC » ou choisis un autre "
+            'affichage" >&2; exit 3; }; '
+            'command -v python3 >/dev/null || { echo "python3 '
+            'introuvable (serveur web noVNC)" >&2; exit 3; }; '
             "python3 -m http.server " + str(WEB_PORT)
             + ' --bind 127.0.0.1 --directory "$nv" '
             ">/dev/null 2>&1 & "
-            "web=$!; trap 'kill $web 2>/dev/null' EXIT; "
-            'echo "' + URL_MARKER + "http://localhost:" + str(WEB_PORT)
-            + "/vnc.html?autoconnect=true&resize=scale&host=localhost"
-            "&port=" + str(WEBSOCKET_PORT) + '"'
+            "web=$!"
         )
 
         args += [
@@ -143,12 +152,52 @@ def vm_script(
     else:
         parts.append(
             'echo "' + INFO_MARKER + "Client VNC : localhost:"
-            + str(VNC_PORT) + '"'
+            + str(VNC_PORT) + " (TigerVNC, RealVNC, TightVNC...). "
+            "Sans client VNC, choisis « Web (noVNC) »" + '"'
         )
 
         args += ["-display none", "-vnc 127.0.0.1:0"]
 
-    parts.append("qemu-system-x86_64 " + " ".join(args))
+    # QEMU en arrière-plan : on vérifie qu'il démarre vraiment et que
+    # l'affichage répond avant d'annoncer l'adresse.
+    port = WEBSOCKET_PORT if display == "web" else VNC_PORT
+
+    parts.append(
+        "qemu-system-x86_64 " + " ".join(args)
+        + " & qpid=$!; "
+        "trap 'kill $qpid ${web:-} 2>/dev/null' EXIT INT TERM"
+    )
+
+    if display == "window":
+        parts.append(
+            'if [ -z "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then '
+            'echo "' + INFO_MARKER + "Pas d'affichage WSLg détecté : "
+            'choisis « Web (noVNC) » si aucune fenêtre ne s ouvre"; fi'
+        )
+
+    else:
+        parts.append(
+            "ready=0; n=0; while [ $n -lt 30 ]; do "
+            "kill -0 $qpid 2>/dev/null || break; "
+            "if python3 -c \"import socket;"
+            "socket.create_connection(('127.0.0.1'," + str(port)
+            + "),1)\" 2>/dev/null; then ready=1; break; fi; "
+            "n=$((n+1)); sleep 1; done; "
+            'if [ $ready = 1 ]; then echo "' + INFO_MARKER
+            + 'Machine démarrée, affichage prêt."; '
+            'else echo "' + INFO_MARKER + "Machine lancée mais "
+            "l'affichage ne répond pas encore (voir le journal)."
+            '"; fi'
+        )
+
+    if display == "web":
+        parts.append(
+            'echo "' + URL_MARKER + "http://localhost:" + str(WEB_PORT)
+            + "/vnc.html?autoconnect=true&resize=scale&host=localhost"
+            "&port=" + str(WEBSOCKET_PORT) + '"'
+        )
+
+    parts.append("wait $qpid")
 
     return "; ".join(parts)
 

@@ -1278,6 +1278,10 @@ class UniversalLinuxBuilder(QMainWindow):
         if text.startswith(INFO_MARKER):
             text = text[len(INFO_MARKER):]
 
+        # bruit inoffensif de PipeWire (audio) au démarrage de QEMU
+        if "pw.conf" in text and "client.conf" in text:
+            return
+
         self.vm_log.insertPlainText(text + "\n")
 
     def vm_finished(self, result, error):
