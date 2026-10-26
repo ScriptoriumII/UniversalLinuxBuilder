@@ -5,16 +5,13 @@ import json
 import shlex
 import subprocess
 import tempfile
+import urllib.request
+import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, QSize
-from PySide6.QtGui import (
-    QColor,
-    QFont,
-    QIcon,
-    QPainter,
-    QPixmap
-)
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -31,21 +28,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QCheckBox,
     QTextEdit,
-    QMessageBox,
     QFileDialog,
-    QGroupBox,
+    QMessageBox,
     QInputDialog,
+    QGroupBox,
     QSplitter,
-    QHeaderView,
-    QFrame,
-    QAbstractItemView
+    QFrame
 )
 
-# ================================================================
-# CONSTANTES
-# ================================================================
-
-APP_NAME = "Universal Linux Builder"
 VERSION = "1.20"
 
 FAMILIES = [
@@ -64,15 +54,31 @@ RELEASES = {
     "Slackware": ["15.0", "current"]
 }
 
-MANAGERS = {
-    "Debian": "APT",
-    "Fedora": "DNF5",
-    "Arch Linux": "Pacman",
-    "Gentoo": "Portage",
-    "Slackware": "Slackpkg"
+COLORS = {
+    "Debian": "#D70A53",
+    "Fedora": "#51A2DA",
+    "Arch Linux": "#1793D1",
+    "Gentoo": "#9482C9",
+    "Slackware": "#D0D7E2"
 }
 
-MANAGER_COMMANDS = {
+LOGOS = {
+    "Debian": "debian",
+    "Fedora": "fedora",
+    "Arch Linux": "archlinux",
+    "Gentoo": "gentoo",
+    "Slackware": "slackware"
+}
+
+MANAGERS = {
+    "Debian": "apt",
+    "Fedora": "dnf5",
+    "Arch Linux": "pacman",
+    "Gentoo": "emerge",
+    "Slackware": "slackpkg"
+}
+
+MANAGER_BINARY = {
     "Debian": "apt-get",
     "Fedora": "dnf5",
     "Arch Linux": "pacman",
@@ -84,24 +90,107 @@ INSTALLERS = {
     "Debian": "Calamares",
     "Fedora": "Anaconda",
     "Arch Linux": "Calamares",
-    "Gentoo": "Installation Gentoo",
+    "Gentoo": "Installation Gentoo personnalisée",
     "Slackware": "Slackware Setup"
 }
 
-DISTRO_COLORS = {
-    "Debian": "#D70A53",
-    "Fedora": "#51A2DA",
-    "Arch Linux": "#1793D1",
-    "Gentoo": "#9482C9",
-    "Slackware": "#7D95A9"
+# Outils nécessaires dans l'environnement de construction.
+# Les paquets sont spécifiques à la distribution WSL.
+
+BUILD_TOOLS = {
+    "Debian": [
+        ("apt-get", "apt"),
+        ("dpkg", "dpkg"),
+        ("debootstrap", "debootstrap"),
+        ("lb", "live-build"),
+        ("mksquashfs", "squashfs-tools"),
+        ("xorriso", "xorriso"),
+        ("grub-mkrescue", "grub-common")
+    ],
+    "Fedora": [
+        ("dnf5", "dnf5"),
+        ("rpm", "rpm"),
+        ("lorax", "lorax"),
+        ("livemedia-creator", "lorax"),
+        ("mksquashfs", "squashfs-tools"),
+        ("xorriso", "xorriso")
+    ],
+    "Arch Linux": [
+        ("pacman", "pacman"),
+        ("mkarchiso", "archiso"),
+        ("mksquashfs", "squashfs-tools"),
+        ("xorriso", "libisoburn"),
+        ("grub-mkrescue", "grub")
+    ],
+    "Gentoo": [
+        ("emerge", "sys-apps/portage"),
+        ("equery", "app-portage/gentoolkit"),
+        ("mksquashfs", "sys-fs/squashfs-tools"),
+        ("xorriso", "app-cdr/libisoburn")
+    ],
+    "Slackware": [
+        ("installpkg", "pkgtools"),
+        ("slackpkg", "slackpkg"),
+        ("mkisofs", "cdrtools"),
+        ("mksquashfs", "squashfs-tools")
+    ]
 }
 
-DISTRO_SYMBOLS = {
-    "Debian": "D",
-    "Fedora": "f",
-    "Arch Linux": "A",
-    "Gentoo": "g",
-    "Slackware": "S"
+# Paquets devant être présents dans le Linux installé.
+# Leur existence et leur compatibilité doivent être vérifiées
+# avec les dépôts de la version choisie.
+
+TARGET_BASE = {
+    "Debian": [
+        "linux-image-amd64",
+        "systemd-sysv",
+        "apt",
+        "dpkg",
+        "ca-certificates",
+        "sudo",
+        "network-manager",
+        "iproute2",
+        "openssh-client"
+    ],
+    "Fedora": [
+        "kernel",
+        "systemd",
+        "dnf5",
+        "rpm",
+        "fedora-repos",
+        "ca-certificates",
+        "sudo",
+        "NetworkManager",
+        "iproute"
+    ],
+    "Arch Linux": [
+        "base",
+        "linux",
+        "linux-firmware",
+        "pacman",
+        "archlinux-keyring",
+        "sudo",
+        "networkmanager",
+        "iproute2",
+        "ca-certificates"
+    ],
+    "Gentoo": [
+        "sys-kernel/gentoo-kernel",
+        "sys-apps/portage",
+        "sys-apps/sudo",
+        "net-misc/networkmanager",
+        "app-misc/ca-certificates",
+        "sys-apps/iproute2"
+    ],
+    "Slackware": [
+        "kernel-generic",
+        "kernel-modules",
+        "pkgtools",
+        "slackpkg",
+        "sudo",
+        "networkmanager",
+        "ca-certificates"
+    ]
 }
 
 DESKTOPS = {
@@ -113,7 +202,7 @@ DESKTOPS = {
     },
     "Fedora": {
         "Aucun": [],
-        "GNOME": ["gnome-shell", "gdm"],
+        "GNOME": ["gnome-shell", "gnome-session", "gdm"],
         "KDE Plasma": ["plasma-desktop", "sddm"],
         "Xfce": ["xfce4-session", "xfce4-panel"]
     },
@@ -136,109 +225,69 @@ DESKTOPS = {
     }
 }
 
-BASE_PACKAGES = {
-    "Debian": [
-        "linux-image-amd64",
-        "systemd-sysv",
-        "apt",
-        "dpkg",
-        "sudo",
-        "network-manager",
-        "ca-certificates"
-    ],
-    "Fedora": [
-        "kernel",
-        "systemd",
-        "dnf5",
-        "rpm",
-        "fedora-repos",
-        "sudo",
-        "NetworkManager",
-        "ca-certificates"
-    ],
-    "Arch Linux": [
-        "base",
-        "linux",
-        "linux-firmware",
-        "pacman",
-        "archlinux-keyring",
-        "sudo",
-        "networkmanager"
-    ],
-    "Gentoo": [
-        "sys-kernel/gentoo-kernel",
-        "sys-apps/portage",
-        "sys-apps/sudo",
-        "net-misc/networkmanager"
-    ],
-    "Slackware": [
-        "kernel-generic",
-        "kernel-modules",
-        "pkgtools",
-        "slackpkg",
-        "sudo",
-        "networkmanager"
-    ]
-}
-
-TOOLS = {
-    "Debian": [
-        ("apt-get", "apt"),
-        ("debootstrap", "debootstrap"),
-        ("lb", "live-build"),
-        ("mksquashfs", "squashfs-tools"),
-        ("xorriso", "xorriso")
-    ],
-    "Fedora": [
-        ("dnf5", "dnf5"),
-        ("rpm", "rpm"),
-        ("lorax", "lorax"),
-        ("livemedia-creator", "lorax"),
-        ("mksquashfs", "squashfs-tools")
-    ],
-    "Arch Linux": [
-        ("pacman", "pacman"),
-        ("mkarchiso", "archiso"),
-        ("mksquashfs", "squashfs-tools"),
-        ("xorriso", "libisoburn")
-    ],
-    "Gentoo": [
-        ("emerge", "sys-apps/portage"),
-        ("mksquashfs", "sys-fs/squashfs-tools"),
-        ("xorriso", "app-cdr/libisoburn")
-    ],
-    "Slackware": [
-        ("installpkg", "pkgtools"),
-        ("slackpkg", "slackpkg"),
-        ("mkisofs", "cdrtools")
-    ]
+AUDIO = {
+    "Debian": {
+        "PipeWire": ["pipewire", "wireplumber", "pipewire-pulse"],
+        "PulseAudio": ["pulseaudio"],
+        "ALSA": ["alsa-utils"],
+        "Aucun": []
+    },
+    "Fedora": {
+        "PipeWire": ["pipewire", "wireplumber", "pipewire-pulseaudio"],
+        "PulseAudio": ["pulseaudio"],
+        "ALSA": ["alsa-utils"],
+        "Aucun": []
+    },
+    "Arch Linux": {
+        "PipeWire": ["pipewire", "wireplumber", "pipewire-pulse"],
+        "PulseAudio": ["pulseaudio"],
+        "ALSA": ["alsa-utils"],
+        "Aucun": []
+    },
+    "Gentoo": {
+        "PipeWire": ["media-video/pipewire"],
+        "PulseAudio": ["media-sound/pulseaudio"],
+        "ALSA": ["media-sound/alsa-utils"],
+        "Aucun": []
+    },
+    "Slackware": {
+        "PipeWire": ["pipewire"],
+        "PulseAudio": ["pulseaudio"],
+        "ALSA": ["alsa-utils"],
+        "Aucun": []
+    }
 }
 
 EXTRAS = {
     "Debian": {
         "Wi-Fi": ["wpasupplicant"],
         "Bluetooth": ["bluez"],
-        "Impression": ["cups"]
+        "Impression": ["cups"],
+        "Firmware": ["firmware-linux-free"]
     },
     "Fedora": {
         "Wi-Fi": ["NetworkManager-wifi"],
         "Bluetooth": ["bluez"],
-        "Impression": ["cups"]
+        "Impression": ["cups"],
+        "Firmware": ["linux-firmware"]
     },
     "Arch Linux": {
         "Wi-Fi": ["iwd"],
         "Bluetooth": ["bluez"],
-        "Impression": ["cups"]
+        "Impression": ["cups"],
+        "Firmware": ["linux-firmware"]
     },
     "Gentoo": {
         "Wi-Fi": ["net-wireless/iwd"],
         "Bluetooth": ["net-wireless/bluez"],
-        "Impression": ["net-print/cups"]
+        "Impression": ["net-print/cups"],
+        "Firmware": ["sys-kernel/linux-firmware"]
     },
     "Slackware": {
         "Wi-Fi": ["wpa_supplicant"],
         "Bluetooth": ["bluez"],
-        "Impression": ["cups"]
+        "Impression": ["cups"],
+        "Firmware": ["kernel-firmware"]
     }
 }
 
@@ -246,303 +295,215 @@ SAFE_PACKAGE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9+_.:/@-]{0,119}$"
 )
 
-APP_DIRECTORY = (
-    Path.home()
-    / "Documents"
-    / "UniversalLinuxBuilder"
-)
+CACHE = Path.home() / ".universal_linux_builder" / "logos"
 
-LOGO_DIRECTORY = APP_DIRECTORY / "logos"
-
-SETTINGS_FILE = (
-    Path(
-        os.environ.get(
-            "APPDATA",
-            str(Path.home())
-        )
-    )
+SETTINGS = (
+    Path(os.environ.get("APPDATA", str(Path.home())))
     / "UniversalLinuxBuilder"
     / "settings.json"
 )
 
-# ================================================================
-# DESIGN v1.20
-# ================================================================
+ANSI = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
+)
 
-STYLE = """
+DARK = """
 QWidget {
-    background-color: #0D1420;
-    color: #E7EDF5;
+    background: #10151D;
+    color: #DCE4EF;
     font-family: "Segoe UI";
     font-size: 12px;
 }
 
 QMainWindow {
-    background-color: #0D1420;
+    background: #10151D;
 }
 
-QFrame#Header {
-    background-color: #101B2A;
-    border-bottom: 1px solid #283A50;
-}
-
-QLabel#AppTitle {
-    font-size: 20px;
-    font-weight: 600;
-    color: #F2F6FC;
-}
-
-QLabel#ActiveDistribution {
-    font-size: 13px;
-    font-weight: 600;
-    color: #DCE8F6;
-}
-
-QLabel#SectionTitle {
-    font-size: 15px;
-    font-weight: 600;
-    color: #F0F5FB;
-}
-
-QLabel#Context {
-    background-color: #152235;
-    border: 1px solid #2B4059;
-    border-radius: 5px;
-    padding: 10px 12px;
-    color: #E5EDF7;
-    font-weight: 500;
-}
-
-QPushButton {
-    background-color: #21334A;
-    border: 1px solid #344B65;
-    border-radius: 5px;
-    padding: 7px 12px;
-    min-height: 18px;
-}
-
-QPushButton:hover {
-    background-color: #2B4665;
-    border-color: #4C729A;
-}
-
-QPushButton:pressed {
-    background-color: #1C3855;
-}
-
-QPushButton:disabled {
-    color: #7D8B9C;
-    background-color: #182334;
-}
-
-QPushButton#DistroButton {
-    background-color: #19283B;
-    border: 1px solid #32475F;
-    border-radius: 6px;
-    padding: 5px 10px;
-    min-height: 34px;
-    text-align: left;
-    font-weight: 500;
-}
-
-QPushButton#DistroButton:hover {
-    background-color: #243B56;
-    border-color: #54789F;
-}
-
-QPushButton#DistroButton[active="true"] {
-    background-color: #263F5C;
-    border: 1px solid #6B9AC9;
-    color: #FFFFFF;
+QLabel {
+    background: transparent;
 }
 
 QLineEdit,
 QComboBox,
 QTextEdit,
 QTableWidget {
-    background-color: #152235;
-    border: 1px solid #2E435B;
+    background: #171F2B;
+    color: #E5ECF5;
+    border: 1px solid #2C394B;
     border-radius: 5px;
     padding: 5px;
-    selection-background-color: #365E87;
+    selection-background-color: #28558A;
 }
 
-QLineEdit:focus,
-QComboBox:focus {
-    border: 1px solid #608FBE;
-}
-
-QComboBox {
+QPushButton {
+    background: #253448;
+    color: #E5EDF7;
+    border: 1px solid #354A62;
+    border-radius: 5px;
+    padding: 7px 12px;
     min-height: 22px;
 }
 
-QComboBox QAbstractItemView {
-    background-color: #18283B;
-    selection-background-color: #345A80;
+QPushButton:hover {
+    background: #304761;
+    border-color: #52789E;
+}
+
+QPushButton:disabled {
+    color: #66778A;
+    background: #1A2330;
 }
 
 QTabWidget::pane {
-    border: 1px solid #27394F;
-    border-radius: 3px;
+    border: 1px solid #263447;
+    border-top: none;
 }
 
 QTabBar::tab {
-    background-color: #111D2C;
-    color: #C6D2E1;
+    background: #151D29;
+    color: #AAB8CB;
     padding: 10px 17px;
-    border-right: 1px solid #293A50;
+    border-right: 1px solid #263447;
 }
 
 QTabBar::tab:selected {
-    background-color: #1A2B40;
-    color: #FFFFFF;
-    border-bottom: 2px solid #75ACDF;
+    background: #1D2A3B;
+    color: white;
+    border-bottom: 2px solid #5B9DE3;
 }
 
-QTabBar::tab:hover {
-    background-color: #20354D;
+QTableWidget {
+    alternate-background-color: #1D2939;
+    gridline-color: transparent;
+}
+
+QHeaderView::section {
+    background: #24344A;
+    color: #DCE5F1;
+    border: none;
+    border-right: 1px solid #34455B;
+    padding: 7px;
 }
 
 QGroupBox {
-    border: 1px solid #2D4057;
+    border: 1px solid #2B3A4D;
     border-radius: 6px;
-    margin-top: 12px;
-    padding: 10px;
-    font-weight: 500;
+    margin-top: 13px;
+    padding-top: 12px;
 }
 
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 12px;
-    padding: 0 6px;
-}
-
-QHeaderView::section {
-    background-color: #243B55;
-    color: #EAF1FA;
-    border: none;
-    border-right: 1px solid #334A65;
-    padding: 8px;
-    font-weight: 500;
-}
-
-QTableWidget {
-    alternate-background-color: #1C2C40;
-    gridline-color: transparent;
-}
-
-QTableWidget::item {
-    padding-left: 5px;
-}
-
-QTableWidget::item:selected {
-    background-color: #31577D;
+    padding: 0 5px;
+    color: #9EB8D6;
 }
 
 QScrollBar:vertical {
-    background: #101B2A;
+    background: #141D29;
     width: 11px;
 }
 
 QScrollBar::handle:vertical {
-    background: #415A74;
-    border-radius: 4px;
+    background: #3B4E66;
+    border-radius: 5px;
 }
 
-QScrollBar::handle:vertical:hover {
-    background: #567696;
+QTabWidget#sections::pane {
+    border: 1px solid #263447;
+    border-top: none;
 }
 
-QStatusBar {
-    background-color: #101B2A;
-    color: #B7C9DD;
+QTabWidget#sections QTabBar::tab {
+    padding: 8px 14px;
 }
 """
 
-# ================================================================
-# CONFIGURATION
-# ================================================================
 
-def load_settings():
-    try:
-        result = json.loads(
-            SETTINGS_FILE.read_text(
-                encoding="utf-8"
-            )
+# ============================================================
+# LOGOS
+# ============================================================
+
+def logo(family, size=36):
+    CACHE.mkdir(parents=True, exist_ok=True)
+
+    identifier = LOGOS[family]
+    filename = CACHE / (identifier + ".svg")
+
+    if not filename.exists():
+        color = COLORS[family].replace("#", "")
+
+        url = (
+            "https://cdn.simpleicons.org/"
+            + identifier
+            + "/"
+            + color
         )
 
-        if isinstance(result, dict):
-            return result
-
-    except (OSError, ValueError):
-        pass
-
-    return {}
-
-
-def save_settings(data):
-    SETTINGS_FILE.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    descriptor, temporary = tempfile.mkstemp(
-        prefix="settings_",
-        suffix=".tmp",
-        dir=SETTINGS_FILE.parent
-    )
-
-    try:
-        with os.fdopen(
-            descriptor,
-            "w",
-            encoding="utf-8"
-        ) as file:
-            json.dump(
-                data,
-                file,
-                ensure_ascii=False,
-                indent=2
+        try:
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "UniversalLinuxBuilder/" + VERSION
+                }
             )
 
-        os.replace(
-            temporary,
-            SETTINGS_FILE
-        )
+            with urllib.request.urlopen(
+                request,
+                timeout=3
+            ) as response:
+                data = response.read(200000)
 
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+            if b"<svg" in data[:1000]:
+                filename.write_bytes(data)
+
+        except Exception:
+            pass
+
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    if filename.exists():
+        renderer = QSvgRenderer(str(filename))
+
+        if renderer.isValid():
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            return pixmap
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(
+        QPainter.RenderHint.Antialiasing
+    )
+    painter.setBrush(QColor(COLORS[family]))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(2, 2, size - 4, size - 4)
+    painter.end()
+
+    return pixmap
 
 
-# ================================================================
+# ============================================================
 # EXECUTION WSL
-# ================================================================
+# ============================================================
 
-def decode_output(raw):
-    if raw.startswith(
-        (b"\xff\xfe", b"\xfe\xff")
-    ):
-        return raw.decode(
-            "utf-16",
-            errors="replace"
-        ).replace("\x00", "").strip()
+def decode(data):
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        result = data.decode("utf-16", "replace")
 
-    if b"\x00" in raw[:120]:
-        return raw.decode(
-            "utf-16-le",
-            errors="replace"
-        ).replace("\x00", "").lstrip("\ufeff").strip()
+    elif b"\x00" in data[:100]:
+        result = data.decode("utf-16-le", "replace")
 
-    return raw.decode(
-        "utf-8",
-        errors="replace"
-    ).lstrip("\ufeff").strip()
+    else:
+        result = data.decode("utf-8", "replace")
+
+    return ANSI.sub("", result).replace("\x00", "").lstrip("\ufeff")
 
 
-def execute(arguments, timeout=180):
+def run(argv, timeout=300):
     process = subprocess.run(
-        arguments,
+        argv,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -555,146 +516,98 @@ def execute(arguments, timeout=180):
     )
 
     return (
-        decode_output(process.stdout),
-        decode_output(process.stderr),
+        decode(process.stdout),
+        decode(process.stderr),
         process.returncode
     )
 
 
-def linux(environment, command, root=False, timeout=300):
-    arguments = [
-        "wsl.exe",
-        "--distribution",
-        environment
-    ]
+def wsl(env, command, timeout=300, root=False):
+    argv = ["wsl.exe", "-d", env]
 
     if root:
-        arguments += [
-            "--user",
-            "root"
-        ]
+        argv += ["-u", "root"]
 
-    arguments += [
+    argv += [
         "--exec",
         "/bin/sh",
         "-lc",
         command
     ]
 
-    return execute(
-        arguments,
-        timeout
+    return run(argv, timeout)
+
+
+def load_settings():
+    try:
+        data = json.loads(
+            SETTINGS.read_text(encoding="utf-8")
+        )
+
+        return data if isinstance(data, dict) else {}
+
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(data):
+    SETTINGS.parent.mkdir(
+        parents=True,
+        exist_ok=True
     )
 
+    fd, temporary = tempfile.mkstemp(
+        prefix="settings-",
+        suffix=".tmp",
+        dir=SETTINGS.parent
+    )
 
-def installed_wsl():
-    output, error, code = execute(
-        [
-            "wsl.exe",
-            "--list",
-            "--quiet"
-        ],
+    try:
+        with os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8"
+        ) as handle:
+            json.dump(
+                data,
+                handle,
+                ensure_ascii=False,
+                indent=2
+            )
+
+        os.replace(temporary, SETTINGS)
+
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def wsl_names():
+    output, error, code = run(
+        ["wsl.exe", "--list", "--quiet"],
         60
     )
 
     if code:
         raise RuntimeError(
-            error or output or "Erreur WSL"
+            error or output or "Impossible de lire la liste WSL2"
         )
 
-    return list(
-        dict.fromkeys(
-            line.strip()
-            for line in output.splitlines()
-            if line.strip()
-        )
-    )
+    return list(dict.fromkeys(
+        line.strip()
+        for line in output.splitlines()
+        if line.strip()
+    ))
 
 
-def detect_wsl(environment):
-    output, error, code = linux(
-        environment,
-        "cat /etc/os-release",
-        timeout=60
-    )
-
-    if code:
-        return {
-            "name": environment,
-            "family": "Inconnue",
-            "version": "",
-            "codename": ""
-        }
-
-    information = {}
-
-    for line in output.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-
-            information[key] = (
-                value.strip()
-                .strip('"')
-                .strip("'")
-            )
-
-    identifiers = (
-        information.get("ID", "")
-        + " "
-        + information.get("ID_LIKE", "")
-    ).lower().split()
-
-    mapping = {
-        "debian": "Debian",
-        "fedora": "Fedora",
-        "arch": "Arch Linux",
-        "archlinux": "Arch Linux",
-        "gentoo": "Gentoo",
-        "slackware": "Slackware"
-    }
-
-    family = "Inconnue"
-
-    for identifier in identifiers:
-        if identifier in mapping:
-            family = mapping[identifier]
-            break
-
-    return {
-        "name": environment,
-        "family": family,
-        "version": information.get(
-            "VERSION_ID",
-            ""
-        ),
-        "codename": information.get(
-            "VERSION_CODENAME",
-            ""
-        )
-    }
-
-
-def detect_inventory(names):
-    return [
-        detect_wsl(name)
-        for name in names
-    ]
-
-
-def get_catalog():
-    output, error, code = execute(
-        [
-            "wsl.exe",
-            "--list",
-            "--online"
-        ],
+def online_catalog():
+    output, error, code = run(
+        ["wsl.exe", "--list", "--online"],
         90
     )
 
     if code:
-        raise RuntimeError(
-            error or output
-        )
+        raise RuntimeError(error or output)
 
     rows = []
 
@@ -707,18 +620,87 @@ def get_catalog():
         if match:
             name, description = match.groups()
 
-            if name.lower() not in (
-                "name",
-                "nom"
-            ):
-                rows.append(
-                    (name, description)
-                )
+            if name.lower() not in ("name", "nom"):
+                rows.append((name, description))
 
     return rows, output
 
 
-def match_environment(family, release, inventory):
+def detect_distribution(env):
+    output, error, code = wsl(
+        env,
+        "cat /etc/os-release",
+        45
+    )
+
+    if code:
+        return {
+            "name": env,
+            "family": "Inconnue",
+            "version": "",
+            "codename": "",
+            "metadata": {},
+            "error": error or output
+        }
+
+    metadata = {}
+
+    for line in output.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            metadata[key] = value.strip().strip('"').strip("'")
+
+    identifiers = (
+        metadata.get("ID", "")
+        + " "
+        + metadata.get("ID_LIKE", "")
+    ).lower().split()
+
+    mapping = {
+        "debian": "Debian",
+        "fedora": "Fedora",
+        "arch": "Arch Linux",
+        "archlinux": "Arch Linux",
+        "gentoo": "Gentoo",
+        "slackware": "Slackware"
+    }
+
+    family = next(
+        (
+            mapping[identifier]
+            for identifier in identifiers
+            if identifier in mapping
+        ),
+        "Inconnue"
+    )
+
+    return {
+        "name": env,
+        "family": family,
+        "version": metadata.get("VERSION_ID", ""),
+        "codename": metadata.get("VERSION_CODENAME", ""),
+        "metadata": metadata,
+        "error": ""
+    }
+
+
+def detect_all(names):
+    return [
+        detect_distribution(name)
+        for name in names
+    ]
+
+
+def detect_family(env):
+    info = detect_distribution(env)
+
+    if info["error"]:
+        raise RuntimeError(info["error"])
+
+    return info["family"], info["metadata"]
+
+
+def best_match(family, release, inventory):
     candidates = [
         item
         for item in inventory
@@ -734,136 +716,107 @@ def match_environment(family, release, inventory):
                 item["version"],
                 item["codename"]
             ),
-            item["name"].lower()
+            item["name"].casefold()
         )
     )
 
     return candidates[0]["name"]
 
 
-# ================================================================
-# GESTIONNAIRES ET OUTILS
-# ================================================================
+def check_tools(env, family):
+    if family not in BUILD_TOOLS:
+        raise RuntimeError(
+            "Famille WSL non prise en charge : " + family
+        )
 
-def check_tools(environment, family):
     commands = []
 
-    for executable, package in TOOLS[family]:
-        quoted = shlex.quote(executable)
-
+    for executable, package in BUILD_TOOLS[family]:
         commands.append(
             "if command -v "
-            + quoted
-            + " >/dev/null 2>&1; "
-            + "then printf '%s\\n' "
+            + shlex.quote(executable)
+            + " >/dev/null 2>&1; then echo "
             + shlex.quote(executable + ":OK")
-            + "; else printf '%s\\n' "
+            + "; else echo "
             + shlex.quote(executable + ":ABSENT")
             + "; fi"
         )
 
-    output, error, code = linux(
-        environment,
+    output, error, code = wsl(
+        env,
         "; ".join(commands),
-        timeout=120
+        120
     )
 
     if code:
-        raise RuntimeError(
-            error or output
-        )
+        raise RuntimeError(error or output)
 
     states = {}
 
     for line in output.splitlines():
         if ":" in line:
-            name, state = line.split(
-                ":",
-                1
-            )
-
-            states[name] = (
-                state.strip() == "OK"
-            )
+            name, state = line.split(":", 1)
+            states[name] = state.strip() == "OK"
 
     return [
         (
             executable,
             package,
-            "Présent"
-            if states.get(executable)
-            else "Absent"
+            "Présent" if states.get(executable) else "Absent"
         )
-        for executable, package in TOOLS[family]
+        for executable, package in BUILD_TOOLS[family]
     ]
 
 
-def test_manager(environment, family):
-    executable = MANAGER_COMMANDS[family]
+def verify_tools(env):
+    family, metadata = detect_family(env)
 
+    return family, metadata, check_tools(env, family)
+
+
+def test_manager(env, family):
     command = (
         "command -v "
-        + shlex.quote(executable)
+        + shlex.quote(MANAGER_BINARY[family])
     )
 
-    return (
-        command,
-        linux(
-            environment,
-            command,
-            timeout=60
-        )
-    )
+    return command, wsl(env, command, 60)
 
 
-def update_repositories(environment, family):
+def update_repositories(env, family):
     commands = {
         "Debian": (
-            "DEBIAN_FRONTEND=noninteractive "
-            "apt-get update"
+            "DEBIAN_FRONTEND=noninteractive apt-get update"
         ),
-        "Fedora": (
-            "dnf5 makecache --refresh"
-        ),
-        "Arch Linux": (
-            "pacman -Syu --noconfirm"
-        ),
-        "Gentoo": (
-            "emerge --sync"
-        ),
-        "Slackware": (
-            "slackpkg update"
-        )
+        "Fedora": "dnf5 makecache --refresh",
+        "Arch Linux": "pacman -Syu --noconfirm",
+        "Gentoo": "emerge --sync",
+        "Slackware": "slackpkg update"
     }
 
     command = commands[family]
 
-    return (
+    return command, wsl(
+        env,
         command,
-        linux(
-            environment,
-            command,
-            root=True,
-            timeout=3600
-        )
+        3600,
+        root=True
     )
 
 
-def install_tools(environment, family):
+def install_tools(env, family):
     if family not in (
         "Debian",
         "Fedora",
         "Arch Linux"
     ):
         raise RuntimeError(
-            "Installation automatique non prise "
-            "en charge pour cette famille."
+            "Installation automatique des outils non validée "
+            "pour cette famille. "
+            "Utilise son gestionnaire natif manuellement."
         )
 
-    rows = check_tools(
-        environment,
-        family
-    )
+    rows = check_tools(env, family)
 
     missing = sorted({
         package
@@ -872,10 +825,7 @@ def install_tools(environment, family):
     })
 
     if not missing:
-        return (
-            "Aucun outil manquant",
-            ("", "", 0)
-        )
+        return "Aucun outil manquant", ("", "", 0)
 
     arguments = " ".join(
         shlex.quote(package)
@@ -884,74 +834,60 @@ def install_tools(environment, family):
 
     commands = {
         "Debian": (
+            "DEBIAN_FRONTEND=noninteractive apt-get update && "
             "DEBIAN_FRONTEND=noninteractive "
-            "apt-get update && "
-            "DEBIAN_FRONTEND=noninteractive "
-            "apt-get install -y "
-            "--no-install-recommends "
+            "apt-get install -y --no-install-recommends "
             + arguments
         ),
-        "Fedora": (
-            "dnf5 install -y "
-            + arguments
-        ),
+        "Fedora": "dnf5 -y install " + arguments,
         "Arch Linux": (
-            "pacman -Syu --noconfirm --needed "
-            + arguments
+            "pacman -Syu --noconfirm --needed " + arguments
         )
     }
 
     command = commands[family]
 
-    return (
+    return command, wsl(
+        env,
         command,
-        linux(
-            environment,
-            command,
-            root=True,
-            timeout=3600
-        )
+        3600,
+        root=True
     )
 
 
-# ================================================================
-# RECHERCHE APPLICATIONS
-# ================================================================
-
-def search_packages(environment, family, query):
-    commands = {
+def search_packages(env, family, query):
+    command = {
         "Debian": "apt-cache search",
         "Fedora": "dnf5 search",
         "Arch Linux": "pacman -Ss",
         "Gentoo": "emerge --search",
         "Slackware": "slackpkg search"
-    }
+    }[family]
 
-    command = (
+    return wsl(
+        env,
         "LC_ALL=C "
-        + commands[family]
+        + command
         + " "
-        + shlex.quote(query)
-    )
-
-    return linux(
-        environment,
-        command,
-        timeout=300
+        + shlex.quote(query),
+        300
     )
 
 
-def parse_packages(family, output):
+def parse_search(family, output):
     rows = []
     seen = set()
 
     for line in output.splitlines():
+        line = line.strip()
+
         name = ""
+        version = "?"
         description = ""
 
         if family == "Debian":
             match = re.match(
-                r"^([\w+.-]+) - (.+)$",
+                r"^([\w+.-]+)\s+-\s+(.+)$",
                 line
             )
 
@@ -962,8 +898,8 @@ def parse_packages(family, output):
             match = re.match(
                 r"^([\w+.-]+)\."
                 r"(?:x86_64|noarch|aarch64|i686|src)"
-                r"\s*:\s*(.*)$",
-                line.strip()
+                r"\s*:\s*(.+)$",
+                line
             )
 
             if match:
@@ -972,11 +908,11 @@ def parse_packages(family, output):
         elif family == "Arch Linux":
             match = re.match(
                 r"^[\w+.-]+/([^ ]+)\s+([^ ]+)",
-                line.strip()
+                line
             )
 
             if match:
-                name, description = match.groups()
+                name, version = match.groups()
 
         elif family == "Gentoo":
             match = re.search(
@@ -995,7 +931,7 @@ def parse_packages(family, output):
             )
 
             if match:
-                name, description = match.groups()
+                name, version = match.groups()
 
         if (
             name
@@ -1003,172 +939,315 @@ def parse_packages(family, output):
             and name not in seen
         ):
             seen.add(name)
-
-            rows.append(
-                (
-                    name,
-                    description[:160]
-                )
-            )
+            rows.append((
+                name,
+                version,
+                description[:180]
+            ))
 
     return rows[:500]
 
 
-def simulate_packages(environment, family, packages):
-    if family == "Slackware":
-        raise RuntimeError(
-            "Slackware ne dispose pas d'un "
-            "solveur natif complet des dépendances."
-        )
-
+def simulate_packages(env, family, packages):
     arguments = " ".join(
-        shlex.quote(package)
-        for package in packages
+        shlex.quote(name)
+        for name in packages
     )
 
     commands = {
-        "Debian": "apt-get -s install ",
-        "Fedora": "dnf5 --assumeno install ",
+        "Debian": (
+            "LC_ALL=C apt-get -s install "
+            + arguments
+        ),
+        "Fedora": (
+            "LC_ALL=C dnf5 --assumeno install "
+            + arguments
+        ),
         "Arch Linux": (
-            'pacman -Sp --print-format "%n|%v|%s" '
+            "LC_ALL=C pacman -Sp "
+            '--print-format "%n|%v|%s" '
+            + arguments
         ),
         "Gentoo": (
-            "emerge --pretend --verbose --tree "
+            "LC_ALL=C emerge --pretend --verbose --tree "
+            + arguments
         )
     }
 
-    command = (
-        "LC_ALL=C "
-        + commands[family]
-        + arguments
-    )
-
-    return (
-        command,
-        linux(
-            environment,
-            command,
-            timeout=900
+    if family == "Slackware":
+        raise RuntimeError(
+            "Slackware ne fournit pas de résolution native "
+            "complète des dépendances avec slackpkg."
         )
+
+    return wsl(
+        env,
+        commands[family],
+        600
     )
 
 
-# ================================================================
-# THREAD
-# ================================================================
+def export_project(data, directory):
+    destination = Path(directory)
+    destination.mkdir(parents=True, exist_ok=True)
 
-class Worker(QThread):
-    completed = Signal(object, str)
+    json_file = destination / "universal_linux_project.json"
+    packages_file = destination / "packages.txt"
+    readme_file = destination / "README.txt"
+
+    json_file.write_text(
+        json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
+
+    packages_file.write_text(
+        "\n".join(data["packages"]) + "\n",
+        encoding="utf-8"
+    )
+
+    readme_file.write_text(
+        "Universal Linux Builder v" + VERSION + "\n\n"
+        "Distribution : " + data["family"] + "\n"
+        "Version : " + data["release"] + "\n"
+        "Installateur : " + data["installer"] + "\n"
+        "Gestionnaire : " + data["manager"] + "\n\n"
+        "Ce projet est un manifeste de préparation.\n"
+        "Il ne constitue pas une ISO amorçable.\n\n"
+        "Les paquets doivent être vérifiés pour la version "
+        "exacte de la distribution.\n"
+        "Le gestionnaire de paquets doit rester présent "
+        "dans le système installé.\n"
+        "L'installateur doit être configuré et testé "
+        "séparément.\n",
+        encoding="utf-8"
+    )
+
+    return str(destination)
+
+
+# ============================================================
+# CONSTRUCTION ISO EXPERIMENTALE
+# ============================================================
+
+def build_iso(env, family, release, packages, directory):
+    """
+    Construction expérimentale Debian / Arch.
+    Ne garantit ni Calamares ni le démarrage sur Ventoy.
+    """
+
+    if family not in ("Debian", "Arch Linux"):
+        raise RuntimeError(
+            "Construction ISO non implémentée pour "
+            + family
+        )
+
+    actual, metadata, rows = verify_tools(env)
+
+    if actual != family:
+        raise RuntimeError(
+            "Famille WSL incompatible : " + actual
+        )
+
+    missing = [
+        name
+        for name, package, state in rows
+        if state == "Absent"
+    ]
+
+    if missing:
+        raise RuntimeError(
+            "Outils manquants : "
+            + ", ".join(missing)
+        )
+
+    destination = Path(directory)
+
+    if any(destination.iterdir()):
+        raise RuntimeError(
+            "Le dossier de destination doit être vide."
+        )
+
+    identifier = datetime.datetime.now().strftime(
+        "%Y%m%d-%H%M%S-%f"
+    )
+
+    workspace = "/var/tmp/ulb-" + identifier
+    quoted_workspace = shlex.quote(workspace)
+
+    package_arguments = " ".join(
+        shlex.quote(name)
+        for name in packages
+    )
+
+    if family == "Debian":
+        script = (
+            "set -eu; "
+            "mkdir -p " + quoted_workspace + "; "
+            "cd " + quoted_workspace + "; "
+            "lb config "
+            "--distribution " + shlex.quote(release) + " "
+            "--architectures amd64 "
+            "--binary-images iso-hybrid; "
+            "mkdir -p config/package-lists; "
+            'printf "%s\\n" '
+            + package_arguments
+            + " > config/package-lists/ulb.list.chroot; "
+            "lb build"
+        )
+
+    else:
+        profile = "/usr/share/archiso/configs/releng"
+
+        script = (
+            "set -eu; "
+            "test -f "
+            + shlex.quote(profile + "/profiledef.sh")
+            + "; "
+            "mkdir -p " + quoted_workspace + "; "
+            "cp -a "
+            + shlex.quote(profile)
+            + " "
+            + quoted_workspace
+            + "/profile; "
+            "cd " + quoted_workspace + "; "
+            'printf "%s\\n" '
+            + package_arguments
+            + " >> profile/packages.x86_64; "
+            "sort -u profile/packages.x86_64 "
+            "-o profile/packages.x86_64; "
+            "mkdir -p out work; "
+            "mkarchiso -v -w work -o out profile"
+        )
+
+    output, error, code = wsl(
+        env,
+        script,
+        7200,
+        root=True
+    )
+
+    report = (
+        "Universal Linux Builder v" + VERSION + "\n"
+        "Distribution : " + family + "\n"
+        "WSL : " + env + "\n"
+        "Workspace : " + workspace + "\n"
+        "Code retour : " + str(code) + "\n\n"
+        + output + "\n" + error
+    )
+
+    (destination / "build_report.txt").write_text(
+        report,
+        encoding="utf-8"
+    )
+
+    if code:
+        raise RuntimeError(
+            "Construction échouée.\n"
+            + (error or output)[-1800:]
+        )
+
+    paths, error, code = wsl(
+        env,
+        "find "
+        + quoted_workspace
+        + ' -type f -name "*.iso" -print',
+        120,
+        root=True
+    )
+
+    if code or not paths.strip():
+        raise RuntimeError(
+            "La construction n'a produit aucune ISO."
+        )
+
+    files = []
+
+    for index, source in enumerate(
+        paths.splitlines(),
+        1
+    ):
+        target = destination / (
+            "ULB_"
+            + family.replace(" ", "_")
+            + "_"
+            + str(index)
+            + ".iso"
+        )
+
+        with target.open("wb") as handle:
+            process = subprocess.run(
+                [
+                    "wsl.exe",
+                    "-d", env,
+                    "-u", "root",
+                    "--exec", "cat", source
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=handle,
+                stderr=subprocess.PIPE,
+                timeout=1800,
+                creationflags=getattr(
+                    subprocess,
+                    "CREATE_NO_WINDOW",
+                    0
+                )
+            )
+
+        if process.returncode:
+            raise RuntimeError(
+                "Copie ISO échouée : "
+                + decode(process.stderr)
+            )
+
+        with target.open("rb") as handle:
+            handle.seek(32768)
+            signature = handle.read(7)
+
+        iso9660 = (
+            len(signature) >= 6
+            and signature[1:6] == b"CD001"
+        )
+
+        files.append({
+            "file": str(target),
+            "bytes": target.stat().st_size,
+            "iso9660": iso9660,
+            "boot_tested": False,
+            "installer_tested": False,
+            "ventoy_tested": False
+        })
+
+    return files, report
+
+
+# ============================================================
+# THREAD
+# ============================================================
+
+class Task(QThread):
+    done = Signal(object, str)
 
     def __init__(self, function, *arguments):
         super().__init__()
-
         self.function = function
         self.arguments = arguments
 
     def run(self):
         try:
-            result = self.function(
-                *self.arguments
-            )
+            result = self.function(*self.arguments)
+            self.done.emit(result, "")
 
-            self.completed.emit(
-                result,
-                ""
-            )
-
-        except Exception as error:
-            self.completed.emit(
-                None,
-                str(error)
-            )
+        except Exception as exc:
+            self.done.emit(None, str(exc))
 
 
-# ================================================================
-# LOGOS
-# ================================================================
-
-def fallback_icon(family, size=36):
-    pixmap = QPixmap(
-        size,
-        size
-    )
-
-    pixmap.fill(
-        Qt.GlobalColor.transparent
-    )
-
-    painter = QPainter(pixmap)
-
-    painter.setRenderHint(
-        QPainter.RenderHint.Antialiasing
-    )
-
-    painter.setBrush(
-        QColor(DISTRO_COLORS[family])
-    )
-
-    painter.setPen(
-        Qt.PenStyle.NoPen
-    )
-
-    painter.drawRoundedRect(
-        2,
-        2,
-        size - 4,
-        size - 4,
-        8,
-        8
-    )
-
-    painter.setPen(
-        QColor("#FFFFFF")
-    )
-
-    font = QFont(
-        "Segoe UI",
-        int(size * 0.45)
-    )
-
-    font.setBold(True)
-    painter.setFont(font)
-
-    painter.drawText(
-        pixmap.rect(),
-        Qt.AlignmentFlag.AlignCenter,
-        DISTRO_SYMBOLS[family]
-    )
-
-    painter.end()
-
-    return QIcon(pixmap)
-
-
-def distribution_icon(family, size=36):
-    candidates = [
-        LOGO_DIRECTORY / (family + ".svg"),
-        LOGO_DIRECTORY / (
-            family.lower().replace(" ", "-") + ".svg"
-        ),
-        LOGO_DIRECTORY / (family + ".png")
-    ]
-
-    for path in candidates:
-        if path.exists():
-            icon = QIcon(str(path))
-
-            if not icon.isNull():
-                return icon
-
-    return fallback_icon(
-        family,
-        size
-    )
-
-
-# ================================================================
-# APPLICATION
-# ================================================================
+# ============================================================
+# INTERFACE
+# ============================================================
 
 class UniversalLinuxBuilder(QMainWindow):
 
@@ -1176,228 +1255,214 @@ class UniversalLinuxBuilder(QMainWindow):
         super().__init__()
 
         self.setWindowTitle(
-            APP_NAME + " v" + VERSION
+            "Universal Linux Builder v" + VERSION
         )
+        self.resize(1400, 900)
 
-        self.resize(
-            1380,
-            840
-        )
+        self.family_name = "Debian"
 
-        self.setMinimumSize(
-            1050,
-            650
-        )
+        self.config = load_settings()
 
-        self.settings = load_settings()
+        saved = self.config.get("wsl_associations", {})
 
-        self.associations = dict(
-            self.settings.get(
-                "wsl_associations",
-                {}
+        if not isinstance(saved, dict):
+            saved = {}
+
+        self.associations = {
+            family: (
+                saved.get(family, "")
+                if isinstance(saved.get(family, ""), str)
+                else ""
             )
-        )
+            for family in FAMILIES
+        }
 
-        self.manual_associations = set(
-            self.settings.get(
-                "manual_associations",
-                []
-            )
-        )
+        manual = self.config.get("manual_associations", [])
+
+        self.manual_associations = {
+            family
+            for family in (manual if isinstance(manual, list) else [])
+            if family in FAMILIES
+        }
 
         self.inventory = []
-        self.catalog = []
+        self.catalog_rows = []
 
-        self.family = "Debian"
-        self.applications = set()
+        self.selected_packages = set()
+        self.cards = {}
+        self.banners = []
+        self.worker = None
 
-        self.active_worker = None
+        self.analysis_ok = False
+        self.tools_ok = False
+        self.revision = 0
 
-        self.setStyleSheet(STYLE)
+        root = QWidget()
+        self.setCentralWidget(root)
 
-        central = QWidget()
-        self.setCentralWidget(central)
+        main = QVBoxLayout(root)
+        main.setContentsMargins(16, 12, 16, 10)
+        main.setSpacing(10)
 
-        self.main_layout = QVBoxLayout(central)
+        header = QHBoxLayout()
 
-        self.main_layout.setContentsMargins(
-            12,
-            8,
-            12,
-            8
+        self.header_logo = QLabel()
+        self.header_logo.setFixedSize(48, 48)
+        header.addWidget(self.header_logo)
+
+        titles = QVBoxLayout()
+
+        title = QLabel("Universal Linux Builder")
+        title.setStyleSheet(
+            "font-size:20px;font-weight:600;color:#F0F5FC;"
         )
 
-        self.main_layout.setSpacing(8)
+        titles.addWidget(title)
 
-        self.build_header()
-        self.build_distribution_bar()
+        self.subtitle = QLabel()
+        self.subtitle.setStyleSheet(
+            "color:#8FA9C8;font-size:12px;"
+        )
+        titles.addWidget(self.subtitle)
+
+        header.addLayout(titles)
+        header.addStretch()
+
+        version = QLabel("v" + VERSION)
+        version.setStyleSheet("color:#7892AF;")
+        header.addWidget(version)
+
+        main.addLayout(header)
+
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        main.addWidget(line)
 
         self.tabs = QTabWidget()
-        self.main_layout.addWidget(
-            self.tabs,
-            1
-        )
+        main.addWidget(self.tabs)
 
-        self.build_distribution_tab()
-        self.build_system_tab()
-        self.build_applications_tab()
-        self.build_verification_tab()
-        self.build_iso_tab()
-        self.build_wsl_tab()
+        self.make_distribution()
+        self.make_system()
+        self.make_applications()
+        self.make_verification()
+        self.make_iso()
+        self.make_wsl()
 
-        self.statusBar().showMessage(
-            "Prêt"
-        )
+        self.status = QLabel("Prêt")
+        self.status.setStyleSheet("color:#7892AF;")
+        main.addWidget(self.status)
 
-        self.change_distribution(
-            "Debian"
-        )
+        self.setStyleSheet(DARK)
 
+        self.change_family("Debian")
         self.refresh_wsl()
 
-    # ============================================================
-    # COMPOSANTS GENERIQUES
-    # ============================================================
+    # --------------------------------------------------------
+    # OUTILS GRAPHIQUES
+    # --------------------------------------------------------
 
-    def create_page(self, name):
+    def page(self, name):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        layout.setContentsMargins(
-            16,
-            14,
-            16,
-            14
-        )
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        layout.setSpacing(10)
-
-        self.tabs.addTab(
-            widget,
-            name
-        )
+        self.tabs.addTab(widget, name)
 
         return layout
 
-    def create_button(self, text, callback):
-        button = QPushButton(text)
-        button.clicked.connect(callback)
-        return button
+    def button(self, text, callback):
+        widget = QPushButton(text)
+        widget.clicked.connect(callback)
+        return widget
 
-    def create_table(self, headers):
-        table = QTableWidget(
-            0,
-            len(headers)
+    def combo(self, values=()):
+        widget = QComboBox()
+        widget.addItems(values)
+        return widget
+
+    def table(self, headers):
+        widget = QTableWidget(0, len(headers))
+        widget.setHorizontalHeaderLabels(headers)
+        widget.setAlternatingRowColors(True)
+        widget.setShowGrid(False)
+        widget.verticalHeader().hide()
+        widget.verticalHeader().setDefaultSectionSize(29)
+
+        widget.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
         )
 
-        table.setHorizontalHeaderLabels(
-            headers
+        widget.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
         )
 
-        table.setAlternatingRowColors(True)
+        widget.horizontalHeader().setStretchLastSection(True)
 
-        table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
+        return widget
 
-        table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-
-        table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-
-        table.verticalHeader().hide()
-
-        table.verticalHeader().setDefaultSectionSize(
-            30
-        )
-
-        table.horizontalHeader().setStretchLastSection(
-            True
-        )
-
-        table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Interactive
-        )
-
-        return table
-
-    def fill_table(self, table, rows):
+    def fill(self, table, rows):
         table.setSortingEnabled(False)
+        table.setRowCount(len(rows))
 
-        table.setRowCount(
-            len(rows)
-        )
-
-        for row_index, row in enumerate(rows):
-            for column_index, value in enumerate(row):
-                item = QTableWidgetItem(
-                    str(value)
-                )
-
+        for i, row in enumerate(rows):
+            for j, value in enumerate(row):
                 table.setItem(
-                    row_index,
-                    column_index,
-                    item
+                    i,
+                    j,
+                    QTableWidgetItem(str(value))
                 )
 
         table.setSortingEnabled(True)
 
-    def selected_table_value(self, table):
+    def selected(self, table):
         row = table.currentRow()
 
         if row < 0:
             return ""
 
-        item = table.item(
-            row,
-            0
-        )
-
+        item = table.item(row, 0)
         return item.text() if item else ""
 
-    def message(self, text):
+    def warning(self, message):
         QMessageBox.warning(
             self,
-            APP_NAME,
-            str(text)
+            "Universal Linux Builder",
+            message
         )
 
-    def confirm(self, text):
-        result = QMessageBox.question(
+    def information(self, message):
+        QMessageBox.information(
             self,
-            APP_NAME,
-            text
+            "Universal Linux Builder",
+            message
         )
 
-        return (
-            result
-            == QMessageBox.StandardButton.Yes
-        )
+    def confirm(self, message):
+        return QMessageBox.question(
+            self,
+            "Confirmation",
+            message
+        ) == QMessageBox.StandardButton.Yes
 
-    def run_task(self, function, arguments, callback):
-        if self.active_worker is not None:
-            self.message(
+    def job(self, function, args, callback):
+        if self.worker is not None:
+            self.warning(
                 "Une opération est déjà en cours."
             )
             return
 
-        worker = Worker(
-            function,
-            *arguments
+        worker = Task(function, *args)
+        self.worker = worker
+
+        self.status.setText(
+            "Opération en cours : " + function.__name__
         )
 
-        self.active_worker = worker
-
-        self.statusBar().showMessage(
-            "Opération en cours..."
-        )
-
-        worker.completed.connect(
+        worker.done.connect(
             lambda result, error, current=worker:
-                self.task_completed(
+                self.job_done(
                     current,
                     callback,
                     result,
@@ -1405,374 +1470,293 @@ class UniversalLinuxBuilder(QMainWindow):
                 )
         )
 
-        worker.finished.connect(
-            worker.deleteLater
-        )
+        worker.finished.connect(worker.deleteLater)
 
         worker.start()
 
-    def task_completed(
-        self,
-        worker,
-        callback,
-        result,
-        error
-    ):
-        if self.active_worker is worker:
-            self.active_worker = None
+    def job_done(self, worker, callback, result, error):
+        # Libère le verrou avant le rappel : un rappel peut
+        # enchaîner une autre opération.
+        if self.worker is worker:
+            self.worker = None
 
-        self.statusBar().showMessage(
-            "Prêt"
-        )
+        self.status.setText("Prêt")
 
-        callback(
-            result,
-            error
-        )
+        callback(result, error)
 
-    def add_next_button(self, layout, index):
+    def invalidate(self, *_):
+        self.revision += 1
+        self.analysis_ok = False
+        self.tools_ok = False
+
+    def banner(self, layout):
         row = QHBoxLayout()
 
+        image = QLabel()
+        image.setFixedSize(26, 26)
+
+        text = QLabel()
+        text.setStyleSheet(
+            "font-size:13px;font-weight:600;color:#C9D8EA;"
+        )
+
+        row.addWidget(image)
+        row.addWidget(text)
         row.addStretch()
 
-        row.addWidget(
-            self.create_button(
-                "Suivant →",
-                lambda: self.tabs.setCurrentIndex(
-                    index
-                )
-            )
+        layout.addLayout(row)
+        self.banners.append((image, text))
+
+    def update_header(self):
+        family = self.family_name
+        release = self.release.currentText()
+
+        self.header_logo.setPixmap(
+            logo(family, 44)
         )
+
+        self.subtitle.setText(
+            family
+            + "  •  "
+            + release
+            + "  |  "
+            + INSTALLERS[family]
+            + "  |  "
+            + MANAGERS[family]
+        )
+
+        for image, text in self.banners:
+            image.setPixmap(logo(family, 24))
+            text.setText(
+                family + " / " + release
+            )
+
+        for name, button in self.cards.items():
+            if name == family:
+                button.setStyleSheet(
+                    "QPushButton{"
+                    "background:#20354C;"
+                    "border:1px solid #5796D5;"
+                    "border-radius:7px;"
+                    "padding:8px;"
+                    "font-weight:600;"
+                    "color:white;"
+                    "}"
+                )
+            else:
+                button.setStyleSheet(
+                    "QPushButton{"
+                    "background:#192431;"
+                    "border:1px solid #2C3A4D;"
+                    "border-radius:7px;"
+                    "padding:8px;"
+                    "color:#B8C8DB;"
+                    "}"
+                    "QPushButton:hover{"
+                    "background:#24364B;"
+                    "}"
+                )
+
+    def next_button(self, layout, index):
+        row = QHBoxLayout()
+        row.addStretch()
+
+        button = self.button(
+            "Continuer",
+            lambda: self.tabs.setCurrentIndex(index)
+        )
+
+        button.setFixedWidth(125)
+        row.addWidget(button)
 
         layout.addLayout(row)
 
-    # ============================================================
-    # EN-TETE
-    # ============================================================
+    # --------------------------------------------------------
+    # DISTRIBUTION
+    # --------------------------------------------------------
 
-    def build_header(self):
-        frame = QFrame()
-        frame.setObjectName("Header")
+    def make_distribution(self):
+        layout = self.page("Distribution")
 
-        layout = QHBoxLayout(frame)
-
-        layout.setContentsMargins(
-            8,
-            5,
-            8,
-            8
+        title = QLabel("Choisir une distribution")
+        title.setStyleSheet(
+            "font-size:16px;font-weight:600;"
         )
-
-        title = QLabel(
-            APP_NAME + "  |  v" + VERSION
-        )
-
-        title.setObjectName(
-            "AppTitle"
-        )
-
         layout.addWidget(title)
-        layout.addStretch()
 
-        self.active_icon = QLabel()
-
-        self.active_icon.setFixedSize(
-            30,
-            30
-        )
-
-        layout.addWidget(
-            self.active_icon
-        )
-
-        self.active_distribution = QLabel()
-
-        self.active_distribution.setObjectName(
-            "ActiveDistribution"
-        )
-
-        layout.addWidget(
-            self.active_distribution
-        )
-
-        self.main_layout.addWidget(
-            frame
-        )
-
-    # ============================================================
-    # BANDEAU DISTRIBUTIONS
-    # ============================================================
-
-    def build_distribution_bar(self):
-        row = QHBoxLayout()
-
-        row.setSpacing(8)
-        row.setContentsMargins(0, 0, 0, 0)
-
-        self.distribution_buttons = {}
+        cards = QHBoxLayout()
+        cards.setSpacing(9)
 
         for family in FAMILIES:
-            button = QPushButton(
-                family
-            )
-
-            button.setObjectName(
-                "DistroButton"
-            )
-
-            button.setIcon(
-                distribution_icon(
-                    family,
-                    30
-                )
-            )
-
-            button.setIconSize(
-                QSize(28, 28)
-            )
-
-            button.setFixedHeight(
-                44
-            )
-
-            button.setProperty(
-                "active",
-                False
-            )
+            button = QPushButton(family)
+            button.setIcon(QIcon(logo(family, 32)))
+            button.setIconSize(QSize(32, 32))
+            button.setFixedHeight(64)
 
             button.clicked.connect(
-                lambda checked=False, name=family:
-                    self.change_distribution(name)
+                lambda checked=False, f=family:
+                    self.change_family(f)
             )
 
-            row.addWidget(
-                button,
-                1
-            )
+            cards.addWidget(button)
+            self.cards[family] = button
 
-            self.distribution_buttons[family] = button
-
-        self.main_layout.addLayout(
-            row
-        )
-
-    # ============================================================
-    # DISTRIBUTION
-    # ============================================================
-
-    def build_distribution_tab(self):
-        layout = self.create_page(
-            "Distribution"
-        )
-
-        title = QLabel(
-            "Configuration de la distribution"
-        )
-
-        title.setObjectName(
-            "SectionTitle"
-        )
-
-        layout.addWidget(title)
+        layout.addLayout(cards)
 
         form = QFormLayout()
-        form.setSpacing(12)
 
-        self.release = QComboBox()
+        self.release = self.combo()
+        self.release.setMaximumWidth(320)
+
+        form.addRow("Version", self.release)
+
+        layout.addLayout(form)
 
         self.release.currentTextChanged.connect(
             self.release_changed
         )
 
-        form.addRow(
-            "Version Linux",
-            self.release
-        )
+        group = QGroupBox("Composants natifs")
+        group_layout = QFormLayout(group)
 
         self.installer_label = QLabel()
         self.manager_label = QLabel()
 
-        form.addRow(
+        group_layout.addRow(
             "Installateur",
             self.installer_label
         )
 
-        form.addRow(
+        group_layout.addRow(
             "Gestionnaire de paquets",
             self.manager_label
         )
 
-        layout.addLayout(form)
+        layout.addWidget(group)
 
-        note = QLabel(
-            "Sélectionne la distribution dans le bandeau "
-            "supérieur, puis sa version ici."
+        self.distribution_note = QLabel()
+        self.distribution_note.setWordWrap(True)
+        self.distribution_note.setStyleSheet(
+            "color:#8FA4BF;"
         )
 
-        note.setStyleSheet(
-            "color:#9FB1C6;"
-        )
-
-        layout.addWidget(note)
+        layout.addWidget(self.distribution_note)
 
         layout.addStretch()
+        self.next_button(layout, 1)
 
-        self.add_next_button(
-            layout,
-            1
-        )
-
-    # ============================================================
+    # --------------------------------------------------------
     # SYSTEME
-    # ============================================================
+    # --------------------------------------------------------
 
-    def build_system_tab(self):
-        layout = self.create_page(
-            "Système"
-        )
-
-        title = QLabel(
-            "Configuration du système Linux"
-        )
-
-        title.setObjectName(
-            "SectionTitle"
-        )
-
-        layout.addWidget(title)
+    def make_system(self):
+        layout = self.page("Système")
+        self.banner(layout)
 
         form = QFormLayout()
-        form.setSpacing(12)
 
-        self.desktop = QComboBox()
-        self.init_system = QComboBox()
-
-        self.kernel = QComboBox()
-
-        self.kernel.addItems([
+        self.desktop = self.combo()
+        self.kernel = self.combo([
             "Stable",
             "LTS",
             "Hardened"
         ])
 
-        self.audio = QComboBox()
+        self.init = self.combo()
 
-        self.audio.addItems([
+        self.display = self.combo([
+            "Wayland",
+            "X11",
+            "Aucun"
+        ])
+
+        self.audio = self.combo([
             "PipeWire",
             "PulseAudio",
             "ALSA",
             "Aucun"
         ])
 
-        self.display_server = QComboBox()
-
-        self.display_server.addItems([
-            "Wayland",
-            "X11"
+        self.boot = self.combo([
+            "GRUB",
+            "Aucun"
         ])
 
-        self.boot_mode = QComboBox()
-
-        self.boot_mode.addItems([
+        self.boot_mode = self.combo([
             "UEFI",
             "BIOS"
         ])
 
-        for label, control in [
-            ("Environnement de bureau", self.desktop),
-            ("Système d'initialisation", self.init_system),
+        fields = [
+            ("Bureau", self.desktop),
             ("Noyau", self.kernel),
-            ("Serveur graphique", self.display_server),
+            ("Initialisation", self.init),
+            ("Affichage", self.display),
             ("Audio", self.audio),
-            ("Démarrage", self.boot_mode)
-        ]:
-            form.addRow(
-                label,
-                control
+            ("Bootloader", self.boot),
+            ("Amorçage", self.boot_mode)
+        ]
+
+        for label, widget in fields:
+            widget.setMaximumWidth(400)
+            form.addRow(label, widget)
+
+            widget.currentTextChanged.connect(
+                self.invalidate
             )
 
         layout.addLayout(form)
 
-        group = QGroupBox(
-            "Services supplémentaires"
-        )
-
-        group_layout = QHBoxLayout(group)
-
         self.flags = {}
 
-        for name in [
-            "Wi-Fi",
-            "Bluetooth",
-            "Impression"
+        for name, enabled in [
+            ("Wi-Fi", True),
+            ("Bluetooth", True),
+            ("Impression", False),
+            ("Firmware", True)
         ]:
             checkbox = QCheckBox(name)
-
-            checkbox.setChecked(
-                name != "Impression"
+            checkbox.setChecked(enabled)
+            checkbox.toggled.connect(
+                self.invalidate
             )
 
             self.flags[name] = checkbox
-
-            group_layout.addWidget(
-                checkbox
-            )
-
-        group_layout.addStretch()
-
-        layout.addWidget(group)
+            layout.addWidget(checkbox)
 
         layout.addStretch()
+        self.next_button(layout, 2)
 
-        self.add_next_button(
-            layout,
-            2
-        )
-
-    # ============================================================
+    # --------------------------------------------------------
     # APPLICATIONS
-    # ============================================================
+    # --------------------------------------------------------
 
-    def build_applications_tab(self):
-        layout = self.create_page(
-            "Applications"
-        )
-
-        self.app_context = QLabel()
-        self.app_context.setObjectName(
-            "Context"
-        )
-
-        layout.addWidget(
-            self.app_context
-        )
+    def make_applications(self):
+        layout = self.page("Applications")
+        self.banner(layout)
 
         row = QHBoxLayout()
 
-        self.search_field = QLineEdit()
-
-        self.search_field.setPlaceholderText(
-            "Rechercher une application dans les dépôts..."
+        self.search_text = QLineEdit()
+        self.search_text.setPlaceholderText(
+            "Rechercher : firefox, vlc, gimp..."
         )
 
-        self.search_field.returnPressed.connect(
+        self.search_text.returnPressed.connect(
             self.search_applications
         )
 
-        row.addWidget(
-            self.search_field,
-            1
-        )
+        row.addWidget(self.search_text)
 
         row.addWidget(
-            self.create_button(
+            self.button(
                 "Rechercher",
                 self.search_applications
             )
         )
 
         row.addWidget(
-            self.create_button(
+            self.button(
                 "Actualiser les dépôts",
                 self.update_project_repositories
             )
@@ -1780,59 +1764,50 @@ class UniversalLinuxBuilder(QMainWindow):
 
         layout.addLayout(row)
 
-        self.app_results = self.create_table([
+        self.search_results = self.table([
             "Paquet",
+            "Version",
             "Description"
         ])
 
-        self.app_results.setColumnWidth(
-            0,
-            270
-        )
+        self.search_results.setColumnWidth(0, 270)
+        self.search_results.setColumnWidth(1, 150)
 
-        self.app_results.cellDoubleClicked.connect(
+        self.search_results.cellDoubleClicked.connect(
             self.add_search_result
         )
 
         layout.addWidget(
-            self.app_results,
+            self.search_results,
             3
         )
 
-        label = QLabel(
-            "Applications sélectionnées"
+        layout.addWidget(
+            QLabel("Applications ajoutées")
         )
 
-        layout.addWidget(label)
+        self.apps_table = self.table(["Paquet"])
 
-        self.selected_apps = self.create_table([
-            "Paquet"
-        ])
-
-        self.selected_apps.cellDoubleClicked.connect(
+        self.apps_table.cellDoubleClicked.connect(
             self.remove_application
         )
 
         layout.addWidget(
-            self.selected_apps,
+            self.apps_table,
             1
         )
 
         row = QHBoxLayout()
 
         self.manual_package = QLineEdit()
-
         self.manual_package.setPlaceholderText(
-            "Ajouter un paquet manuellement"
+            "Nom exact du paquet"
         )
 
-        row.addWidget(
-            self.manual_package,
-            1
-        )
+        row.addWidget(self.manual_package)
 
         row.addWidget(
-            self.create_button(
+            self.button(
                 "Ajouter",
                 self.add_manual_application
             )
@@ -1840,266 +1815,184 @@ class UniversalLinuxBuilder(QMainWindow):
 
         layout.addLayout(row)
 
-        self.app_log = QTextEdit()
-        self.app_log.setReadOnly(True)
+        self.apps_log = QTextEdit()
+        self.apps_log.setReadOnly(True)
+        self.apps_log.setMaximumHeight(110)
 
-        self.app_log.setMaximumHeight(
-            95
-        )
+        layout.addWidget(self.apps_log)
 
-        layout.addWidget(
-            self.app_log
-        )
+        self.next_button(layout, 3)
 
-        self.add_next_button(
-            layout,
-            3
-        )
-
-    # ============================================================
+    # --------------------------------------------------------
     # VERIFICATION
-    # ============================================================
+    # --------------------------------------------------------
 
-    def build_verification_tab(self):
-        layout = self.create_page(
-            "Vérification"
+    def make_verification(self):
+        layout = self.page("Vérification")
+        self.banner(layout)
+
+        self.verification_status = QLabel(
+            "Vérifications non effectuées"
         )
 
-        self.verification_context = QLabel()
-
-        self.verification_context.setObjectName(
-            "Context"
-        )
-
-        self.verification_context.setWordWrap(
-            True
-        )
-
-        layout.addWidget(
-            self.verification_context
-        )
+        layout.addWidget(self.verification_status)
 
         row = QHBoxLayout()
 
         row.addWidget(
-            self.create_button(
-                "Vérifier les outils",
+            self.button(
+                "Vérifier les outils ISO",
                 self.verify_project
             )
         )
 
         row.addWidget(
-            self.create_button(
-                "Installer les outils manquants",
-                self.install_project_tools
-            )
-        )
-
-        row.addWidget(
-            self.create_button(
-                "Simuler les dépendances",
-                self.analyze_project
+            self.button(
+                "Analyser les paquets",
+                self.analyze_packages
             )
         )
 
         row.addStretch()
-
         layout.addLayout(row)
 
-        self.verification_summary = QLabel(
-            "Aucune vérification effectuée."
-        )
-
-        layout.addWidget(
-            self.verification_summary
-        )
-
-        self.verification_table = self.create_table([
-            "Outil",
-            "Paquet requis",
+        self.checks_table = self.table([
+            "Composant",
+            "Paquet",
             "État"
         ])
 
-        self.verification_table.setColumnWidth(
-            0,
-            240
-        )
-
-        self.verification_table.setColumnWidth(
-            1,
-            300
-        )
+        self.checks_table.setColumnWidth(0, 270)
+        self.checks_table.setColumnWidth(1, 270)
 
         layout.addWidget(
-            self.verification_table,
+            self.checks_table,
+            2
+        )
+
+        self.packages_table = self.table([
+            "Paquet cible",
+            "Origine"
+        ])
+
+        self.packages_table.setColumnWidth(0, 360)
+
+        layout.addWidget(
+            self.packages_table,
             2
         )
 
         self.verification_log = QTextEdit()
-
-        self.verification_log.setReadOnly(
-            True
-        )
+        self.verification_log.setReadOnly(True)
 
         layout.addWidget(
             self.verification_log,
-            1
+            2
         )
 
-        self.add_next_button(
-            layout,
-            4
-        )
+        self.next_button(layout, 4)
 
-    # ============================================================
+    # --------------------------------------------------------
     # ISO
-    # ============================================================
+    # --------------------------------------------------------
 
-    def build_iso_tab(self):
-        layout = self.create_page(
-            "ISO"
+    def make_iso(self):
+        layout = self.page("ISO")
+        self.banner(layout)
+
+        self.iso_status = QLabel()
+        self.iso_status.setWordWrap(True)
+        layout.addWidget(self.iso_status)
+
+        self.iso_note = QLabel(
+            "La vérification d'une signature ISO9660 "
+            "ne constitue pas un test de démarrage.\n"
+            "Une ISO doit être testée en machine virtuelle, "
+            "puis avec Ventoy et son installateur."
         )
 
-        self.iso_context = QLabel()
-
-        self.iso_context.setObjectName(
-            "Context"
+        self.iso_note.setWordWrap(True)
+        self.iso_note.setStyleSheet(
+            "color:#8FA4BF;"
         )
 
-        layout.addWidget(
-            self.iso_context
-        )
-
-        group = QGroupBox(
-            "Configuration de construction"
-        )
-
-        form = QFormLayout(group)
-
-        self.iso_installer = QLabel()
-        self.iso_manager = QLabel()
-        self.iso_wsl = QLabel()
-
-        form.addRow(
-            "Installateur",
-            self.iso_installer
-        )
-
-        form.addRow(
-            "Gestionnaire de paquets",
-            self.iso_manager
-        )
-
-        form.addRow(
-            "Environnement WSL2",
-            self.iso_wsl
-        )
-
-        layout.addWidget(group)
-
-        warning = QLabel(
-            "La construction d'une ISO amorçable "
-            "n'est pas encore implémentée. "
-            "Le projet peut être exporté pour préparer "
-            "la construction avec les outils natifs "
-            "de la distribution."
-        )
-
-        warning.setWordWrap(
-            True
-        )
-
-        warning.setStyleSheet(
-            "color:#E6BC77;"
-        )
-
-        layout.addWidget(
-            warning
-        )
-
-        layout.addWidget(
-            self.create_button(
-                "Exporter le manifeste ISO",
-                self.export_project
-            )
-        )
-
-        self.iso_log = QTextEdit()
-
-        self.iso_log.setReadOnly(
-            True
-        )
-
-        layout.addWidget(
-            self.iso_log,
-            1
-        )
-
-    # ============================================================
-    # WSL2 - DESIGN COMPACT v1.18
-    # ============================================================
-
-    def build_wsl_tab(self):
-        layout = self.create_page(
-            "WSL2"
-        )
-
-        self.wsl_tabs = QTabWidget()
-
-        layout.addWidget(
-            self.wsl_tabs,
-            1
-        )
-
-        def section(name):
-            widget = QWidget()
-
-            section_layout = QVBoxLayout(
-                widget
-            )
-
-            section_layout.setContentsMargins(
-                8,
-                8,
-                8,
-                8
-            )
-
-            section_layout.setSpacing(8)
-
-            self.wsl_tabs.addTab(
-                widget,
-                name
-            )
-
-            return section_layout
-
-        # --------------------------------------------------------
-        # ENVIRONNEMENTS
-        # --------------------------------------------------------
-
-        environments = section(
-            "Environnements"
-        )
+        layout.addWidget(self.iso_note)
 
         row = QHBoxLayout()
 
         row.addWidget(
-            self.create_button(
+            self.button(
+                "Exporter le projet",
+                self.export_current_project
+            )
+        )
+
+        self.build_button = self.button(
+            "Créer l'ISO expérimentale",
+            self.create_iso
+        )
+
+        row.addWidget(self.build_button)
+        row.addStretch()
+
+        layout.addLayout(row)
+
+        self.iso_log = QTextEdit()
+        self.iso_log.setReadOnly(True)
+
+        layout.addWidget(self.iso_log)
+
+    # --------------------------------------------------------
+    # WSL2
+    # --------------------------------------------------------
+
+    def make_wsl(self):
+        layout = self.page("WSL2")
+
+        title = QLabel("Environnements WSL2")
+        title.setStyleSheet(
+            "font-size:16px;font-weight:600;"
+        )
+        layout.addWidget(title)
+
+        self.wsl_sections = QTabWidget()
+        self.wsl_sections.setObjectName("sections")
+        layout.addWidget(self.wsl_sections, 1)
+
+        def section(name):
+            widget = QWidget()
+
+            section_layout = QVBoxLayout(widget)
+            section_layout.setContentsMargins(12, 12, 12, 12)
+            section_layout.setSpacing(10)
+
+            self.wsl_sections.addTab(widget, name)
+
+            return section_layout
+
+        # ----------------------------------------------------
+        # SOUS-ONGLET 1 : ENVIRONNEMENTS
+        # ----------------------------------------------------
+
+        environments = section("Environnements")
+
+        row = QHBoxLayout()
+
+        row.addWidget(
+            self.button(
                 "Actualiser les WSL",
                 self.refresh_wsl
             )
         )
 
         row.addWidget(
-            self.create_button(
+            self.button(
                 "Catalogue disponible",
                 self.refresh_catalog
             )
         )
 
         row.addStretch()
-
         environments.addLayout(row)
 
         splitter = QSplitter(
@@ -2110,128 +2003,97 @@ class UniversalLinuxBuilder(QMainWindow):
             "Distributions installées"
         )
 
-        installed_layout = QVBoxLayout(
-            installed_group
-        )
+        installed_layout = QVBoxLayout(installed_group)
 
-        self.installed_table = self.create_table([
+        self.installed_table = self.table([
             "Nom WSL",
             "Famille",
             "Version"
         ])
 
-        self.installed_table.setColumnWidth(
-            0,
-            180
-        )
-
-        self.installed_table.setColumnWidth(
-            1,
-            130
-        )
+        self.installed_table.setColumnWidth(0, 190)
+        self.installed_table.setColumnWidth(1, 150)
 
         installed_layout.addWidget(
             self.installed_table
         )
 
         installed_layout.addWidget(
-            self.create_button(
+            self.button(
                 "Supprimer la distribution",
                 self.remove_wsl
             )
         )
 
-        splitter.addWidget(
-            installed_group
-        )
+        splitter.addWidget(installed_group)
 
         catalog_group = QGroupBox(
             "Distributions disponibles"
         )
 
-        catalog_layout = QVBoxLayout(
-            catalog_group
-        )
+        catalog_layout = QVBoxLayout(catalog_group)
 
-        self.catalog_table = self.create_table([
+        self.catalog_table = self.table([
             "Distribution",
             "Description"
         ])
 
-        self.catalog_table.setColumnWidth(
-            0,
-            190
-        )
+        self.catalog_table.setColumnWidth(0, 190)
 
         catalog_layout.addWidget(
             self.catalog_table
         )
 
         catalog_layout.addWidget(
-            self.create_button(
+            self.button(
                 "Installer dans WSL2",
                 self.install_wsl
             )
         )
 
-        splitter.addWidget(
-            catalog_group
-        )
+        splitter.addWidget(catalog_group)
+        splitter.setSizes([560, 560])
 
-        splitter.setSizes([
-            500,
-            500
-        ])
+        environments.addWidget(splitter, 1)
 
-        environments.addWidget(
-            splitter,
-            1
-        )
+        # ----------------------------------------------------
+        # SOUS-ONGLET 2 : OUTILS ET DEPOTS
+        # ----------------------------------------------------
 
-        # --------------------------------------------------------
-        # OUTILS ET DEPOTS
-        # --------------------------------------------------------
-
-        tools_layout = section(
-            "Outils et dépôts"
-        )
+        tools_layout = section("Outils et dépôts")
 
         row = QHBoxLayout()
 
         row.addWidget(
-            QLabel("Environnement WSL :")
+            QLabel("Environnement WSL")
         )
 
-        self.wsl_choice = QComboBox()
+        self.wsl_choice = self.combo()
+        row.addWidget(self.wsl_choice, 1)
 
         row.addWidget(
-            self.wsl_choice,
-            1
-        )
-
-        row.addWidget(
-            self.create_button(
+            self.button(
                 "Tester le gestionnaire",
                 self.test_selected_manager
             )
         )
 
         row.addWidget(
-            self.create_button(
-                "Vérifier",
+            self.button(
+                "Vérifier les outils",
                 self.check_selected_tools
             )
         )
 
         row.addWidget(
-            self.create_button(
+            self.button(
                 "Installer les outils",
                 self.install_selected_tools
             )
         )
 
         row.addWidget(
-            self.create_button(
+            self.button(
                 "Actualiser les dépôts",
                 self.update_selected_repositories
             )
@@ -2239,106 +2101,82 @@ class UniversalLinuxBuilder(QMainWindow):
 
         tools_layout.addLayout(row)
 
-        self.wsl_tools_table = self.create_table([
+        self.wsl_tools_table = self.table([
             "Exécutable",
             "Paquet requis",
             "État"
         ])
 
-        self.wsl_tools_table.setColumnWidth(
-            0,
-            220
-        )
-
-        self.wsl_tools_table.setColumnWidth(
-            1,
-            300
-        )
+        self.wsl_tools_table.setColumnWidth(0, 230)
+        self.wsl_tools_table.setColumnWidth(1, 270)
 
         tools_layout.addWidget(
             self.wsl_tools_table,
             1
         )
 
-        # --------------------------------------------------------
-        # ASSOCIATIONS
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # SOUS-ONGLET 3 : ASSOCIATIONS
+        # ----------------------------------------------------
 
-        associations_layout = section(
-            "Associations"
+        associations_layout = section("Associations")
+
+        note = QLabel(
+            "Chaque famille du projet est associée "
+            "automatiquement à un environnement WSL2 "
+            "compatible.\n"
+            "Les choix manuels sont enregistrés et "
+            "restaurés au démarrage."
         )
 
-        description = QLabel(
-            "Les environnements WSL sont détectés "
-            "automatiquement. Les associations "
-            "manuelles sont conservées."
-        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#8FA4BF;")
 
-        associations_layout.addWidget(
-            description
-        )
+        associations_layout.addWidget(note)
 
         group = QGroupBox(
-            "Associations WSL aux distributions"
+            "Environnements de construction"
         )
 
-        form = QFormLayout(
-            group
-        )
+        form = QFormLayout(group)
 
         self.mapping_boxes = {}
-        self.mapping_indicators = {}
+        self.indicators = {}
 
         for family in FAMILIES:
             row = QHBoxLayout()
 
-            combo = QComboBox()
+            icon = QLabel()
+            icon.setFixedSize(24, 24)
+            icon.setPixmap(logo(family, 22))
 
-            combo.addItem(
-                "— Non associé —"
-            )
+            row.addWidget(icon)
+
+            combo = self.combo(["— Non associé —"])
 
             combo.currentTextChanged.connect(
-                lambda name, current_family=family:
-                    self.mapping_changed(
-                        current_family,
-                        name
-                    )
+                lambda value, f=family:
+                    self.mapping_changed(f, value)
             )
 
-            row.addWidget(
-                combo,
-                1
-            )
+            row.addWidget(combo, 1)
 
-            indicator = QLabel(
-                "Non associé"
-            )
+            indicator = QLabel("○ Non associé")
+            indicator.setMinimumWidth(130)
 
-            indicator.setMinimumWidth(
-                130
-            )
+            row.addWidget(indicator)
 
-            row.addWidget(
-                indicator
-            )
-
-            form.addRow(
-                family,
-                row
-            )
+            form.addRow(family, row)
 
             self.mapping_boxes[family] = combo
-            self.mapping_indicators[family] = indicator
+            self.indicators[family] = indicator
 
-        associations_layout.addWidget(
-            group
-        )
+        associations_layout.addWidget(group)
 
         row = QHBoxLayout()
 
         row.addWidget(
-            self.create_button(
+            self.button(
                 "Réassocier automatiquement",
                 self.reset_associations
             )
@@ -2346,105 +2184,71 @@ class UniversalLinuxBuilder(QMainWindow):
 
         row.addStretch()
 
-        associations_layout.addLayout(
-            row
-        )
-
+        associations_layout.addLayout(row)
         associations_layout.addStretch()
 
-        # --------------------------------------------------------
-        # JOURNAL WSL
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # JOURNAL REPLIABLE
+        # ----------------------------------------------------
 
         row = QHBoxLayout()
 
-        self.log_button = self.create_button(
+        self.log_button = self.button(
             "Afficher le journal ▾",
             self.toggle_wsl_log
         )
 
-        row.addWidget(
-            self.log_button
-        )
-
+        row.addWidget(self.log_button)
         row.addStretch()
 
-        layout.addLayout(
-            row
-        )
+        layout.addLayout(row)
 
         self.wsl_log = QTextEdit()
+        self.wsl_log.setReadOnly(True)
+        self.wsl_log.setVisible(False)
+        self.wsl_log.setMaximumHeight(155)
 
-        self.wsl_log.setReadOnly(
-            True
-        )
+        layout.addWidget(self.wsl_log)
 
-        self.wsl_log.setVisible(
-            False
-        )
+    # --------------------------------------------------------
+    # SELECTION DISTRIBUTION
+    # --------------------------------------------------------
 
-        self.wsl_log.setMaximumHeight(
-            150
-        )
+    def change_family(self, family):
+        self.family_name = family
 
-        layout.addWidget(
-            self.wsl_log
-        )
-
-    # ============================================================
-    # DISTRIBUTION ACTIVE
-    # ============================================================
-
-    def change_distribution(self, family):
-        self.family = family
-
-        self.release.blockSignals(
-            True
-        )
-
+        self.release.blockSignals(True)
         self.release.clear()
+        self.release.addItems(RELEASES[family])
+        self.release.blockSignals(False)
 
-        self.release.addItems(
-            RELEASES[family]
-        )
-
-        self.release.blockSignals(
-            False
-        )
-
+        self.desktop.blockSignals(True)
         self.desktop.clear()
+        self.desktop.addItems(DESKTOPS[family].keys())
+        self.desktop.blockSignals(False)
 
-        self.desktop.addItems(
-            list(
-                DESKTOPS[family].keys()
-            )
-        )
-
-        self.init_system.clear()
+        self.init.blockSignals(True)
+        self.init.clear()
 
         if family == "Gentoo":
-            self.init_system.addItems([
+            self.init.addItems([
                 "OpenRC",
                 "systemd"
             ])
 
         elif family == "Slackware":
-            self.init_system.addItem(
-                "SysVinit"
-            )
+            self.init.addItem("SysVinit")
 
         else:
-            self.init_system.addItem(
-                "systemd"
-            )
+            self.init.addItem("systemd")
+
+        self.init.blockSignals(False)
 
         self.kernel.setEnabled(
             family == "Arch Linux"
         )
 
-        self.kernel.setCurrentText(
-            "Stable"
-        )
+        self.kernel.setCurrentText("Stable")
 
         self.installer_label.setText(
             INSTALLERS[family]
@@ -2454,112 +2258,59 @@ class UniversalLinuxBuilder(QMainWindow):
             MANAGERS[family]
         )
 
-        for name, button in self.distribution_buttons.items():
-            active = (
-                name == family
+        self.distribution_note.setText(
+            "Le gestionnaire de paquets natif et les dépôts "
+            "devront rester fonctionnels après l'installation.\n"
+            "WSL2 sert uniquement à préparer le projet."
+        )
+
+        supported = family in (
+            "Debian",
+            "Arch Linux"
+        )
+
+        self.build_button.setEnabled(supported)
+
+        if supported:
+            self.iso_status.setText(
+                "Construction expérimentale disponible pour "
+                + family
+                + ". L'installation sur disque et le démarrage "
+                "ne sont pas encore validés."
+            )
+        else:
+            self.iso_status.setText(
+                "Construction ISO non implémentée pour "
+                + family
+                + ". Tu peux vérifier les outils et exporter "
+                "le projet."
             )
 
-            button.setProperty(
-                "active",
-                active
-            )
+        self.selected_packages.clear()
+        self.refresh_selected_apps()
 
-            button.style().unpolish(
-                button
-            )
-
-            button.style().polish(
-                button
-            )
-
-            button.update()
-
-        self.update_context()
-
-    def release_changed(self, *_):
-        self.update_context()
+        self.invalidate()
+        self.update_header()
+        self.refresh_target_packages()
 
         if self.inventory:
             self.apply_associations()
 
-    def update_context(self):
-        release = self.release.currentText()
+    def release_changed(self, *_):
+        self.invalidate()
+        self.update_header()
 
-        environment = self.associations.get(
-            self.family,
-            ""
-        ) or "Non associé"
+        if self.inventory:
+            self.apply_associations()
 
-        icon = distribution_icon(
-            self.family,
-            30
-        )
-
-        self.active_icon.setPixmap(
-            icon.pixmap(
-                QSize(28, 28)
-            )
-        )
-
-        self.active_distribution.setText(
-            self.family
-            + "  •  "
-            + release
-        )
-
-        context = (
-            self.family
-            + " "
-            + release
-            + "  |  "
-            + self.desktop.currentText()
-            + "  |  "
-            + MANAGERS[self.family]
-        )
-
-        self.app_context.setText(
-            "APPLICATIONS  •  "
-            + context
-            + "  |  WSL2 : "
-            + environment
-        )
-
-        self.verification_context.setText(
-            "DISTRIBUTION ANALYSÉE  •  "
-            + context
-            + "\nWSL2 : "
-            + environment
-            + "  |  Installateur : "
-            + INSTALLERS[self.family]
-        )
-
-        self.iso_context.setText(
-            "PROJET ISO  •  "
-            + context
-        )
-
-        self.iso_installer.setText(
-            INSTALLERS[self.family]
-        )
-
-        self.iso_manager.setText(
-            MANAGERS[self.family]
-        )
-
-        self.iso_wsl.setText(
-            environment
-        )
-
-    # ============================================================
-    # JOURNAL
-    # ============================================================
+    # --------------------------------------------------------
+    # WSL2 : JOURNAL
+    # --------------------------------------------------------
 
     def toggle_wsl_log(self):
         visible = not self.wsl_log.isVisible()
 
-        self.wsl_log.setVisible(
-            visible
-        )
+        self.wsl_log.setVisible(visible)
 
         self.log_button.setText(
             "Masquer le journal ▴"
@@ -2567,138 +2318,135 @@ class UniversalLinuxBuilder(QMainWindow):
             else "Afficher le journal ▾"
         )
 
-    def show_wsl_log(self, text):
-        self.wsl_log.setPlainText(
-            str(text)
-        )
+    def show_wsl_log(self, message):
+        self.wsl_log.setPlainText(str(message))
 
         if not self.wsl_log.isVisible():
             self.toggle_wsl_log()
 
-    # ============================================================
-    # ASSOCIATIONS WSL
-    # ============================================================
+    # --------------------------------------------------------
+    # WSL2 : SAUVEGARDE DES ASSOCIATIONS
+    # --------------------------------------------------------
 
     def persist_associations(self):
-        self.settings["version"] = VERSION
+        self.config["version"] = VERSION
 
-        self.settings["wsl_associations"] = dict(
+        self.config["wsl_associations"] = dict(
             self.associations
         )
 
-        self.settings["manual_associations"] = sorted(
+        self.config["manual_associations"] = sorted(
             self.manual_associations
         )
 
         try:
-            save_settings(
-                self.settings
+            save_settings(self.config)
+
+        except OSError as exc:
+            self.status.setText(
+                "Sauvegarde impossible : " + str(exc)
             )
 
-        except OSError as error:
-            self.statusBar().showMessage(
-                "Sauvegarde impossible : "
-                + str(error)
-            )
+    # --------------------------------------------------------
+    # WSL2 : DETECTION AUTOMATIQUE
+    # --------------------------------------------------------
 
     def refresh_wsl(self):
-        self.run_task(
-            installed_wsl,
+        self.job(
+            wsl_names,
             (),
             self.wsl_names_ready
         )
 
     def wsl_names_ready(self, names, error):
         if error:
-            self.show_wsl_log(
-                error
-            )
+            self.show_wsl_log(error)
             return
 
-        self.run_task(
-            detect_inventory,
+        self.job(
+            detect_all,
             (names,),
             self.inventory_ready
         )
 
-    def inventory_ready(self, inventory, error):
+    def inventory_ready(self, items, error):
         if error:
-            self.show_wsl_log(
-                error
-            )
+            self.show_wsl_log(error)
             return
 
-        self.inventory = inventory
+        self.inventory = items
 
-        rows = [
-            (
-                item["name"],
-                item["family"],
-                item["version"]
-            )
-            for item in inventory
-        ]
-
-        self.fill_table(
+        self.fill(
             self.installed_table,
-            rows
+            [
+                (
+                    item["name"],
+                    item["family"],
+                    item["version"]
+                )
+                for item in items
+            ]
         )
 
+        for row in range(self.installed_table.rowCount()):
+            cell = self.installed_table.item(row, 1)
+
+            if cell and cell.text() in LOGOS:
+                cell.setIcon(
+                    QIcon(logo(cell.text(), 18))
+                )
+
+        names = [item["name"] for item in items]
         previous = self.wsl_choice.currentText()
 
         self.wsl_choice.clear()
-
-        self.wsl_choice.addItems([
-            item["name"]
-            for item in inventory
-        ])
-
-        names = [
-            item["name"]
-            for item in inventory
-        ]
+        self.wsl_choice.addItems(names)
 
         if previous in names:
-            self.wsl_choice.setCurrentText(
-                previous
-            )
+            self.wsl_choice.setCurrentText(previous)
 
         self.apply_associations()
 
         self.wsl_log.setPlainText(
-            "Distributions détectées :\n\n"
+            "Détection terminée : "
+            + str(len(items))
+            + " environnement(s).\n\n"
             + "\n".join(
                 item["name"]
                 + " → "
                 + item["family"]
                 + " "
                 + item["version"]
-                for item in inventory
+                for item in items
             )
         )
 
+    def environment_item(self, name):
+        return next(
+            (
+                item
+                for item in self.inventory
+                if item["name"] == name
+            ),
+            None
+        )
+
+    def environment_family(self, name):
+        item = self.environment_item(name)
+
+        return item["family"] if item else ""
+
     def apply_associations(self):
-        names = {
+        names = [
             item["name"]
             for item in self.inventory
-        }
+        ]
 
         changed = False
 
         for family in FAMILIES:
-            saved = self.associations.get(
-                family,
-                ""
-            )
-
-            item = next(
-                (
-                    item
-                    for item in self.inventory
-                    if item["name"] == saved
-                ),
-                None
-            )
+            saved = self.associations.get(family, "")
+            item = self.environment_item(saved)
 
             valid = (
                 item is not None
@@ -2715,19 +2463,17 @@ class UniversalLinuxBuilder(QMainWindow):
                 else:
                     release = (
                         self.release.currentText()
-                        if family == self.family
+                        if family == self.family_name
                         else RELEASES[family][0]
                     )
 
-                    choice = match_environment(
+                    choice = best_match(
                         family,
                         release,
                         self.inventory
                     )
 
-                    self.manual_associations.discard(
-                        family
-                    )
+                    self.manual_associations.discard(family)
 
                 if choice != saved:
                     self.associations[family] = choice
@@ -2735,270 +2481,198 @@ class UniversalLinuxBuilder(QMainWindow):
 
             combo = self.mapping_boxes[family]
 
-            combo.blockSignals(
-                True
-            )
-
+            combo.blockSignals(True)
             combo.clear()
 
             combo.addItems(
-                ["— Non associé —"]
-                + [
-                    item["name"]
-                    for item in self.inventory
-                ]
+                ["— Non associé —"] + names
             )
 
-            selected = self.associations.get(
-                family,
-                ""
-            )
+            chosen = self.associations.get(family, "")
 
-            if selected in names:
-                combo.setCurrentText(
-                    selected
-                )
+            if chosen in names:
+                combo.setCurrentText(chosen)
 
-            combo.blockSignals(
-                False
-            )
+            combo.blockSignals(False)
 
-            self.update_mapping_indicator(
-                family
-            )
+            self.update_indicator(family)
 
         if changed:
             self.persist_associations()
+            self.invalidate()
 
-        self.update_context()
+    def update_indicator(self, family):
+        name = self.associations.get(family, "")
+        item = self.environment_item(name)
 
-    def update_mapping_indicator(self, family):
-        name = self.associations.get(
-            family,
-            ""
-        )
-
-        item = next(
-            (
-                item
-                for item in self.inventory
-                if item["name"] == name
-            ),
-            None
-        )
-
-        if (
-            item is None
-            or item["family"] != family
-        ):
-            text = "○ Non associé"
-            color = "#94A6BB"
+        if item is None or item["family"] != family:
+            message = "○ Non associé"
+            color = "#95A4B6"
 
         else:
-            text = "● Connecté"
-            color = "#82D3A3"
+            desired = (
+                self.release.currentText()
+                if family == self.family_name
+                else RELEASES[family][0]
+            )
 
-        indicator = self.mapping_indicators[
-            family
-        ]
+            mismatch = (
+                family in ("Debian", "Fedora", "Slackware")
+                and desired not in (
+                    item["version"],
+                    item["codename"]
+                )
+            )
 
-        indicator.setText(
-            text
-        )
+            if mismatch:
+                message = "● À vérifier"
+                color = "#E6AD5D"
 
-        indicator.setStyleSheet(
-            "color:" + color
+            else:
+                message = "● Connecté"
+                color = "#7FCE9D"
+
+        self.indicators[family].setText(message)
+
+        self.indicators[family].setStyleSheet(
+            "color:" + color + ";"
         )
 
     def mapping_changed(self, family, name):
-        selected = (
+        chosen = (
             ""
             if name == "— Non associé —"
             else name
         )
 
-        item = next(
-            (
-                item
-                for item in self.inventory
-                if item["name"] == selected
-            ),
-            None
-        )
+        item = self.environment_item(chosen)
 
-        if (
-            item is not None
-            and item["family"] != family
-        ):
-            self.message(
-                "Cette distribution WSL appartient "
-                "à la famille "
+        if item and item["family"] != family:
+            self.warning(
+                "Cette distribution WSL appartient à "
                 + item["family"]
-                + "."
+                + ", pas à "
+                + family
             )
 
             self.apply_associations()
             return
 
-        self.associations[family] = selected
-
-        self.manual_associations.add(
-            family
-        )
+        self.associations[family] = chosen
+        self.manual_associations.add(family)
 
         self.persist_associations()
-
-        self.update_mapping_indicator(
-            family
-        )
-
-        self.update_context()
+        self.update_indicator(family)
+        self.invalidate()
 
     def reset_associations(self):
         if not self.confirm(
-            "Réinitialiser les associations WSL "
-            "et relancer la détection automatique ?"
+            "Effacer les associations manuelles "
+            "et refaire la détection automatique ?"
         ):
             return
 
         self.manual_associations.clear()
-        self.associations.clear()
+        self.associations = {
+            family: ""
+            for family in FAMILIES
+        }
 
         self.apply_associations()
         self.persist_associations()
 
-    # ============================================================
-    # SELECTION WSL
-    # ============================================================
+    # --------------------------------------------------------
+    # WSL2 : ENVIRONNEMENT SELECTIONNE ET PROJET
+    # --------------------------------------------------------
 
     def selected_environment(self):
         name = self.wsl_choice.currentText()
 
-        names = [
-            item["name"]
-            for item in self.inventory
-        ]
-
-        if name not in names:
-            self.message(
-                "Sélectionne un environnement WSL."
+        if self.environment_item(name) is None:
+            self.warning(
+                "Sélectionne un environnement WSL installé."
             )
             return ""
 
         return name
-
-    def environment_family(self, name):
-        item = next(
-            (
-                item
-                for item in self.inventory
-                if item["name"] == name
-            ),
-            None
-        )
-
-        return (
-            item["family"]
-            if item
-            else ""
-        )
 
     def project_environment(self):
         name = self.associations.get(
-            self.family,
+            self.family_name,
             ""
         )
 
-        item = next(
-            (
-                item
-                for item in self.inventory
-                if item["name"] == name
-            ),
-            None
-        )
+        item = self.environment_item(name)
 
         if (
             item is None
-            or item["family"] != self.family
+            or item["family"] != self.family_name
         ):
-            self.message(
-                "Aucun environnement WSL compatible "
-                "n'est associé à "
-                + self.family
-                + "."
+            self.warning(
+                "Associe un environnement WSL compatible avec "
+                + self.family_name
+                + " dans l'onglet WSL2."
             )
 
-            self.tabs.setCurrentIndex(
-                5
-            )
-
-            self.wsl_tabs.setCurrentIndex(
-                2
-            )
+            self.tabs.setCurrentIndex(5)
+            self.wsl_sections.setCurrentIndex(2)
 
             return ""
 
         return name
 
-    # ============================================================
-    # CATALOGUE WSL
-    # ============================================================
+    # --------------------------------------------------------
+    # WSL2 : CATALOGUE, INSTALLATION, SUPPRESSION
+    # --------------------------------------------------------
 
     def refresh_catalog(self):
-        self.run_task(
-            get_catalog,
+        self.job(
+            online_catalog,
             (),
             self.catalog_ready
         )
 
-    def catalog_ready(self, result, error):
+    def catalog_ready(self, data, error):
         if error:
-            self.show_wsl_log(
-                error
-            )
+            self.show_wsl_log(error)
             return
 
-        rows, raw = result
+        rows, raw = data
+        self.catalog_rows = rows
 
-        self.catalog = rows
-
-        self.fill_table(
+        self.fill(
             self.catalog_table,
             rows
         )
 
-        if not rows:
-            self.show_wsl_log(
-                raw
-            )
+        self.wsl_log.setPlainText(
+            str(len(rows))
+            + " distributions disponibles.\n"
+            + (raw[:1500] if not rows else "")
+        )
 
     def install_wsl(self):
-        name = self.selected_table_value(
+        name = self.selected(
             self.catalog_table
         )
 
-        available = [
-            item[0]
-            for item in self.catalog
-        ]
-
-        if name not in available:
-            self.message(
-                "Sélectionne une distribution "
-                "dans le catalogue."
+        if name not in [row[0] for row in self.catalog_rows]:
+            self.warning(
+                "Sélectionne une distribution du catalogue."
             )
             return
 
+        if self.environment_item(name) is not None:
+            self.warning("Déjà installée.")
+            return
+
         if not self.confirm(
-            "Installer "
-            + name
-            + " dans WSL2 ?"
+            "Installer " + name + " dans WSL2 ?"
         ):
             return
 
-        self.run_task(
-            execute,
+        self.job(
+            run,
             (
                 [
                     "wsl.exe",
@@ -3009,83 +2683,65 @@ class UniversalLinuxBuilder(QMainWindow):
                 ],
                 1800
             ),
-            lambda result, error:
-                self.wsl_operation_ready(
+            lambda data, error:
+                self.wsl_operation_done(
                     "Installation",
-                    result,
+                    data,
                     error
                 )
         )
 
     def remove_wsl(self):
-        name = self.selected_table_value(
+        name = self.selected(
             self.installed_table
         )
 
         if not name:
-            self.message(
+            self.warning(
                 "Sélectionne une distribution installée."
             )
             return
 
-        typed, accepted = QInputDialog.getText(
+        typed, ok = QInputDialog.getText(
             self,
             "Suppression définitive",
             "Toutes les données de "
             + name
-            + " seront supprimées.\n\n"
-            "Saisis exactement : "
-            + name
+            + " seront supprimées.\n"
+            "Saisis exactement : " + name
         )
 
-        if (
-            not accepted
-            or typed != name
-        ):
+        if not ok or typed != name:
             return
 
         if not self.confirm(
-            "Confirmer la suppression définitive "
-            "de "
-            + name
-            + " ?"
+            "Supprimer définitivement " + name + " ?"
         ):
             return
 
-        self.run_task(
-            execute,
+        self.job(
+            run,
             (
-                [
-                    "wsl.exe",
-                    "--unregister",
-                    name
-                ],
+                ["wsl.exe", "--unregister", name],
                 900
             ),
-            lambda result, error:
-                self.wsl_operation_ready(
+            lambda data, error:
+                self.wsl_operation_done(
                     "Suppression",
-                    result,
+                    data,
                     error
                 )
         )
 
-    def wsl_operation_ready(
-        self,
-        operation,
-        result,
-        error
-    ):
+    def wsl_operation_done(self, title, data, error):
         if error:
-            self.show_wsl_log(
-                error
-            )
+            self.show_wsl_log(error)
             return
 
-        output, stderr, code = result
+        output, stderr, code = data
 
         self.show_wsl_log(
-            operation
+            title
             + "\nCode retour : "
             + str(code)
             + "\n\n"
@@ -3098,14 +2754,11 @@ class UniversalLinuxBuilder(QMainWindow):
             self.refresh_wsl()
 
         else:
-            self.message(
-                operation
-                + " échouée."
-            )
+            self.warning(title + " échouée.")
 
-    # ============================================================
-    # TEST GESTIONNAIRE
-    # ============================================================
+    # --------------------------------------------------------
+    # WSL2 : GESTIONNAIRE ET OUTILS
+    # --------------------------------------------------------
 
     def test_selected_manager(self):
         name = self.selected_environment()
@@ -3113,47 +2766,34 @@ class UniversalLinuxBuilder(QMainWindow):
         if not name:
             return
 
-        family = self.environment_family(
-            name
-        )
+        family = self.environment_family(name)
 
-        if family not in MANAGER_COMMANDS:
-            self.message(
-                "Famille Linux inconnue."
-            )
+        if family not in MANAGER_BINARY:
+            self.warning("Famille Linux inconnue.")
             return
 
-        self.run_task(
+        self.job(
             test_manager,
             (name, family),
-            self.manager_ready
+            self.manager_test_done
         )
 
-    def manager_ready(self, result, error):
+    def manager_test_done(self, data, error):
         if error:
-            self.show_wsl_log(
-                error
-            )
+            self.show_wsl_log(error)
             return
 
-        command, response = result
-
+        command, response = data
         output, stderr, code = response
 
         self.show_wsl_log(
-            "Commande : "
-            + command
-            + "\nCode retour : "
-            + str(code)
+            "Commande : " + command
+            + "\nCode : " + str(code)
             + "\n\n"
             + output
             + "\n"
             + stderr
         )
-
-    # ============================================================
-    # OUTILS WSL
-    # ============================================================
 
     def check_selected_tools(self):
         name = self.selected_environment()
@@ -3161,445 +2801,26 @@ class UniversalLinuxBuilder(QMainWindow):
         if not name:
             return
 
-        family = self.environment_family(
-            name
-        )
+        family = self.environment_family(name)
 
-        if family not in TOOLS:
-            self.message(
-                "Famille Linux inconnue."
-            )
+        if family not in BUILD_TOOLS:
+            self.warning("Famille Linux inconnue.")
             return
 
-        self.run_task(
+        self.job(
             check_tools,
             (name, family),
-            self.selected_tools_ready
+            self.selected_tools_done
         )
 
-    def selected_tools_ready(self, rows, error):
+    def selected_tools_done(self, rows, error):
         if error:
-            self.show_wsl_log(
-                error
-            )
+            self.show_wsl_log(error)
             return
 
-        self.fill_table(
+        self.fill(
             self.wsl_tools_table,
             rows
-        )
-
-    def install_selected_tools(self):
-        name = self.selected_environment()
-
-        if not name:
-            return
-
-        family = self.environment_family(
-            name
-        )
-
-        if family not in (
-            "Debian",
-            "Fedora",
-            "Arch Linux"
-        ):
-            self.message(
-                "Installation automatique non prise "
-                "en charge pour cette famille."
-            )
-            return
-
-        if not self.confirm(
-            "Installer les outils nécessaires "
-            "dans "
-            + name
-            + " ?"
-        ):
-            return
-
-        self.run_task(
-            install_tools,
-            (name, family),
-            self.selected_tools_installed
-        )
-
-    def selected_tools_installed(
-        self,
-        result,
-        error
-    ):
-        if error:
-            self.show_wsl_log(
-                error
-            )
-            self.message(
-                "Installation échouée."
-            )
-            return
-
-        command, response = result
-
-        output, stderr, code = response
-
-        self.show_wsl_log(
-            "Commande : "
-            + command
-            + "\nCode : "
-            + str(code)
-            + "\n\n"
-            + output[-9000:]
-            + "\n"
-            + stderr[-5000:]
-        )
-
-        if code:
-            self.message(
-                "Installation échouée."
-            )
-
-        else:
-            self.check_selected_tools()
-
-    # ============================================================
-    # DEPOTS
-    # ============================================================
-
-    def update_selected_repositories(self):
-        name = self.selected_environment()
-
-        if name:
-            self.start_repository_update(
-                name
-            )
-
-    def update_project_repositories(self):
-        name = self.project_environment()
-
-        if name:
-            self.start_repository_update(
-                name
-            )
-
-    def start_repository_update(self, name):
-        family = self.environment_family(
-            name
-        )
-
-        if family not in MANAGERS:
-            self.message(
-                "Famille Linux inconnue."
-            )
-            return
-
-        warning = ""
-
-        if family == "Arch Linux":
-            warning = (
-                "\n\nAttention : Pacman effectuera "
-                "une mise à niveau complète."
-            )
-
-        if not self.confirm(
-            "Actualiser les dépôts de "
-            + name
-            + " ("
-            + family
-            + ") ?"
-            + warning
-        ):
-            return
-
-        self.run_task(
-            update_repositories,
-            (name, family),
-            self.repositories_ready
-        )
-
-    def repositories_ready(
-        self,
-        result,
-        error
-    ):
-        if error:
-            self.show_wsl_log(
-                error
-            )
-
-            self.app_log.setPlainText(
-                error
-            )
-
-            return
-
-        command, response = result
-
-        output, stderr, code = response
-
-        message = (
-            "Commande : "
-            + command
-            + "\nCode retour : "
-            + str(code)
-            + "\n\n"
-            + output
-            + "\n"
-            + stderr
-        )
-
-        self.show_wsl_log(
-            message[-15000:]
-        )
-
-        self.app_log.setPlainText(
-            message[-3000:]
-        )
-
-        if code:
-            self.message(
-                "Actualisation des dépôts échouée."
-            )
-
-    # ============================================================
-    # APPLICATIONS
-    # ============================================================
-
-    def search_applications(self):
-        name = self.project_environment()
-
-        if not name:
-            return
-
-        query = self.search_field.text().strip()
-
-        if (
-            not query
-            or len(query) > 70
-        ):
-            self.message(
-                "Recherche invalide."
-            )
-            return
-
-        family = self.family
-
-        self.run_task(
-            search_packages,
-            (
-                name,
-                family,
-                query
-            ),
-            lambda result, error:
-                self.search_ready(
-                    family,
-                    result,
-                    error
-                )
-        )
-
-    def search_ready(
-        self,
-        family,
-        result,
-        error
-    ):
-        if error:
-            self.app_log.setPlainText(
-                error
-            )
-            return
-
-        output, stderr, code = result
-
-        rows = parse_packages(
-            family,
-            output
-        )
-
-        self.fill_table(
-            self.app_results,
-            rows
-        )
-
-        self.app_log.setPlainText(
-            str(len(rows))
-            + " résultat(s).\n"
-            + "Code retour : "
-            + str(code)
-            + "\n\n"
-            + (
-                stderr
-                or (
-                    output[:1500]
-                    if not rows
-                    else "Double-clique sur un paquet "
-                         "pour l'ajouter."
-                )
-            )
-        )
-
-    def refresh_selected_applications(self):
-        self.fill_table(
-            self.selected_apps,
-            [
-                (name,)
-                for name in sorted(
-                    self.applications
-                )
-            ]
-        )
-
-    def add_search_result(self, row, column):
-        item = self.app_results.item(
-            row,
-            0
-        )
-
-        if item:
-            self.applications.add(
-                item.text()
-            )
-
-            self.refresh_selected_applications()
-
-    def remove_application(self, row, column):
-        item = self.selected_apps.item(
-            row,
-            0
-        )
-
-        if item:
-            self.applications.discard(
-                item.text()
-            )
-
-            self.refresh_selected_applications()
-
-    def add_manual_application(self):
-        package = self.manual_package.text().strip()
-
-        if not SAFE_PACKAGE.fullmatch(
-            package
-        ):
-            self.message(
-                "Nom de paquet invalide."
-            )
-            return
-
-        self.applications.add(
-            package
-        )
-
-        self.manual_package.clear()
-
-        self.refresh_selected_applications()
-
-    # ============================================================
-    # LISTE PAQUETS
-    # ============================================================
-
-    def project_packages(self):
-        packages = set(
-            BASE_PACKAGES[self.family]
-        )
-
-        packages.update(
-            DESKTOPS[self.family][
-                self.desktop.currentText()
-            ]
-        )
-
-        packages.update(
-            self.applications
-        )
-
-        for name, checkbox in self.flags.items():
-            if checkbox.isChecked():
-                packages.update(
-                    EXTRAS[self.family][name]
-                )
-
-        if self.family == "Arch Linux":
-            packages.discard(
-                "linux"
-            )
-
-            kernels = {
-                "Stable": "linux",
-                "LTS": "linux-lts",
-                "Hardened": "linux-hardened"
-            }
-
-            packages.add(
-                kernels[
-                    self.kernel.currentText()
-                ]
-            )
-
-        if self.family == "Gentoo":
-            if self.init_system.currentText() == "OpenRC":
-                packages.add(
-                    "sys-apps/openrc"
-                )
-
-            else:
-                packages.add(
-                    "sys-apps/systemd"
-                )
-
-        return sorted(
-            packages
-        )
-
-    # ============================================================
-    # VERIFICATION
-    # ============================================================
-
-    def verify_project(self):
-        name = self.project_environment()
-
-        if not name:
-            return
-
-        self.verification_summary.setText(
-            "Vérification : "
-            + self.family
-            + " "
-            + self.release.currentText()
-            + "  |  WSL2 : "
-            + name
-        )
-
-        self.run_task(
-            check_tools,
-            (
-                name,
-                self.family
-            ),
-            self.verification_ready
-        )
-
-    def verification_ready(
-        self,
-        rows,
-        error
-    ):
-        if error:
-            self.verification_log.setPlainText(
-                error
-            )
-            return
-
-        self.fill_table(
-            self.verification_table,
-            rows
-        )
-
-        present = sum(
-            1
-            for row in rows
-            if row[2] == "Présent"
         )
 
         missing = [
@@ -3608,266 +2829,749 @@ class UniversalLinuxBuilder(QMainWindow):
             if row[2] == "Absent"
         ]
 
-        self.verification_summary.setText(
-            str(present)
-            + " outil(s) présent(s)  |  "
-            + str(len(missing))
-            + " absent(s)"
+        self.status.setText(
+            "Outils manquants : "
+            + (", ".join(missing) if missing else "aucun")
         )
 
-        self.verification_log.setPlainText(
-            "Distribution : "
-            + self.family
-            + " "
-            + self.release.currentText()
-            + "\nWSL2 : "
-            + self.associations.get(
-                self.family,
-                ""
-            )
-            + "\nGestionnaire : "
-            + MANAGERS[self.family]
-            + "\nInstallateur : "
-            + INSTALLERS[self.family]
-            + "\n\nOutils manquants : "
-            + (
-                ", ".join(missing)
-                if missing
-                else "aucun"
-            )
-            + "\n\n"
-            "La présence des outils ne garantit pas "
-            "qu'une ISO soit amorçable."
-        )
-
-    def install_project_tools(self):
-        name = self.project_environment()
+    def install_selected_tools(self):
+        name = self.selected_environment()
 
         if not name:
             return
 
-        if self.family not in (
+        family = self.environment_family(name)
+
+        if family not in (
             "Debian",
             "Fedora",
             "Arch Linux"
         ):
-            self.message(
-                "Installation automatique non prise "
-                "en charge pour cette famille."
+            self.warning(
+                "Installation automatisée non validée pour "
+                + family
             )
             return
 
         if not self.confirm(
-            "Installer les outils manquants "
-            "pour "
-            + self.family
-            + " dans WSL2 "
+            "Installer les outils de construction dans "
             + name
-            + " ?"
+            + " ?\n\n"
+            "Cette opération modifie cet environnement WSL "
+            "et peut télécharger plusieurs paquets."
         ):
             return
 
-        self.run_task(
+        self.job(
             install_tools,
-            (
-                name,
-                self.family
-            ),
-            self.project_tools_installed
+            (name, family),
+            self.install_tools_done
         )
 
-    def project_tools_installed(
-        self,
-        result,
-        error
-    ):
+    def install_tools_done(self, data, error):
         if error:
-            self.verification_log.setPlainText(
-                error
-            )
-
-            self.message(
-                "Installation échouée."
-            )
-
+            self.show_wsl_log(error)
+            self.warning("Installation impossible :\n" + error)
             return
 
-        command, response = result
-
+        command, response = data
         output, stderr, code = response
 
-        self.verification_log.setPlainText(
-            "Commande : "
-            + command
-            + "\nCode : "
-            + str(code)
+        self.show_wsl_log(
+            "Commande : " + command
+            + "\nCode : " + str(code)
             + "\n\n"
-            + output[-10000:]
+            + output[-9000:]
             + "\n"
             + stderr[-5000:]
         )
 
         if code:
-            self.message(
-                "Installation échouée."
+            self.warning(
+                "Installation échouée. Consulte le journal."
             )
 
         else:
-            self.verify_project()
+            self.invalidate()
+            self.check_selected_tools()
 
-    def analyze_project(self):
+    # --------------------------------------------------------
+    # WSL2 : ACTUALISATION DES DEPOTS
+    # --------------------------------------------------------
+
+    def update_selected_repositories(self):
+        name = self.selected_environment()
+
+        if name:
+            self.start_update(name)
+
+    def update_project_repositories(self):
         name = self.project_environment()
 
-        if not name:
+        if name:
+            self.start_update(name)
+
+    def start_update(self, name):
+        family = self.environment_family(name)
+
+        if family not in MANAGER_BINARY:
+            self.warning("Famille Linux inconnue.")
             return
 
-        self.run_task(
-            simulate_packages,
-            (
-                name,
-                self.family,
-                self.project_packages()
-            ),
-            self.analysis_ready
+        if not self.confirm(
+            "Actualiser les dépôts de "
+            + name
+            + " ("
+            + family
+            + ") ?\n\n"
+            "Attention : Arch Linux effectue "
+            "une mise à niveau complète."
+        ):
+            return
+
+        self.job(
+            update_repositories,
+            (name, family),
+            lambda data, error:
+                self.update_done(name, data, error)
         )
 
-    def analysis_ready(
-        self,
-        result,
-        error
-    ):
+    def update_done(self, name, data, error):
         if error:
-            self.verification_log.setPlainText(
-                error
+            self.show_wsl_log(error)
+            self.apps_log.setPlainText(error)
+            return
+
+        command, response = data
+        output, stderr, code = response
+
+        message = (
+            "WSL : " + name
+            + "\nCommande : " + command
+            + "\nCode : " + str(code)
+            + "\n\n"
+            + output
+            + "\n"
+            + stderr
+        )
+
+        self.show_wsl_log(message[-15000:])
+        self.apps_log.setPlainText(message[-3500:])
+
+        if code:
+            self.warning(
+                "Actualisation échouée. Consulte le journal."
+            )
+
+        else:
+            self.information(
+                "Dépôts actualisés pour " + name
+            )
+
+    # --------------------------------------------------------
+    # APPLICATIONS
+    # --------------------------------------------------------
+
+    def refresh_selected_apps(self):
+        self.fill(
+            self.apps_table,
+            [
+                (name,)
+                for name in sorted(self.selected_packages)
+            ]
+        )
+
+    def add_manual_application(self):
+        name = self.manual_package.text().strip()
+
+        if not SAFE_PACKAGE.fullmatch(name):
+            self.warning(
+                "Nom de paquet invalide."
             )
             return
 
-        command, response = result
+        self.selected_packages.add(name)
+        self.manual_package.clear()
 
-        output, stderr, code = response
+        self.refresh_selected_apps()
+        self.refresh_target_packages()
+        self.invalidate()
 
-        self.verification_log.setPlainText(
-            "Distribution : "
-            + self.family
-            + " "
-            + self.release.currentText()
-            + "\nWSL2 : "
-            + self.associations.get(
-                self.family,
+    def add_search_result(self, row, column):
+        item = self.search_results.item(row, 0)
+
+        if item:
+            self.selected_packages.add(item.text())
+            self.refresh_selected_apps()
+            self.refresh_target_packages()
+            self.invalidate()
+
+    def remove_application(self, row, column):
+        item = self.apps_table.item(row, 0)
+
+        if item:
+            self.selected_packages.discard(item.text())
+            self.refresh_selected_apps()
+            self.refresh_target_packages()
+            self.invalidate()
+
+    def search_applications(self):
+        env = self.project_environment()
+
+        if not env:
+            return
+
+        query = self.search_text.text().strip()
+
+        if not query or len(query) > 70:
+            self.warning(
+                "Recherche invalide."
+            )
+            return
+
+        family = self.family_name
+        revision = self.revision
+
+        self.apps_log.setPlainText(
+            "Recherche dans " + env + "..."
+        )
+
+        self.job(
+            search_packages,
+            (env, family, query),
+            lambda data, error:
+                self.search_done(
+                    family,
+                    revision,
+                    data,
+                    error
+                )
+        )
+
+    def search_done(
+        self,
+        family,
+        revision,
+        data,
+        error
+    ):
+        if revision != self.revision:
+            return
+
+        if error:
+            self.apps_log.setPlainText(error)
+            return
+
+        output, stderr, code = data
+
+        rows = parse_search(
+            family,
+            output
+        )
+
+        self.fill(
+            self.search_results,
+            rows
+        )
+
+        self.apps_log.setPlainText(
+            str(len(rows))
+            + " résultats.\n"
+            + "Code : " + str(code)
+            + "\n"
+            + (
+                (stderr or output)[:2500]
+                if code or not rows
+                else "Double-clique pour ajouter un paquet."
+            )
+        )
+
+    # --------------------------------------------------------
+    # PAQUETS CIBLES
+    # --------------------------------------------------------
+
+    def target_packages(self):
+        family = self.family_name
+
+        packages = set(
+            TARGET_BASE[family]
+        )
+
+        packages.update(
+            DESKTOPS[family].get(
+                self.desktop.currentText(),
+                []
+            )
+        )
+
+        packages.update(
+            AUDIO[family].get(
+                self.audio.currentText(),
+                []
+            )
+        )
+
+        packages.update(
+            self.selected_packages
+        )
+
+        for name, checkbox in self.flags.items():
+            if checkbox.isChecked():
+                packages.update(
+                    EXTRAS[family].get(name, [])
+                )
+
+        if family == "Arch Linux":
+            packages.discard("linux")
+
+            packages.add({
+                "Stable": "linux",
+                "LTS": "linux-lts",
+                "Hardened": "linux-hardened"
+            }[self.kernel.currentText()])
+
+        if family == "Gentoo":
+            packages.add(
+                "sys-apps/openrc"
+                if self.init.currentText() == "OpenRC"
+                else "sys-apps/systemd"
+            )
+
+        return sorted(packages)
+
+    def refresh_target_packages(self):
+        if not hasattr(self, "packages_table"):
+            return
+
+        base = set(
+            TARGET_BASE[self.family_name]
+        )
+
+        rows = []
+
+        for package in self.target_packages():
+            origin = (
+                "Système de base"
+                if package in base
+                else "Bureau / option / application"
+            )
+
+            rows.append((
+                package,
+                origin
+            ))
+
+        self.fill(
+            self.packages_table,
+            rows
+        )
+
+    # --------------------------------------------------------
+    # VERIFICATION
+    # --------------------------------------------------------
+
+    def verify_project(self):
+        env = self.project_environment()
+
+        if not env:
+            return
+
+        revision = self.revision
+
+        self.verification_status.setText(
+            "Vérification en cours..."
+        )
+
+        self.job(
+            verify_tools,
+            (env,),
+            lambda data, error:
+                self.verify_done(
+                    env,
+                    revision,
+                    data,
+                    error
+                )
+        )
+
+    def verify_done(
+        self,
+        env,
+        revision,
+        data,
+        error
+    ):
+        if revision != self.revision:
+            return
+
+        if error:
+            self.tools_ok = False
+            self.verification_log.setPlainText(error)
+            self.verification_status.setText(
+                "Échec de vérification"
+            )
+            return
+
+        family, metadata, rows = data
+
+        self.fill(
+            self.checks_table,
+            rows
+        )
+
+        missing = [
+            name
+            for name, package, state in rows
+            if state == "Absent"
+        ]
+
+        target = self.family_name
+        release = self.release.currentText()
+
+        issues = []
+
+        if family != target:
+            issues.append(
+                "Famille WSL incompatible : " + family
+            )
+
+        actual_version = metadata.get(
+            "VERSION_ID",
+            ""
+        )
+
+        if target == "Debian":
+            codename = metadata.get(
+                "VERSION_CODENAME",
                 ""
             )
-            + "\nCommande : "
-            + command
-            + "\nCode retour : "
-            + str(code)
+
+            if release not in (
+                actual_version,
+                codename
+            ):
+                issues.append(
+                    "Version Debian WSL différente "
+                    "de la cible."
+                )
+
+        if target == "Fedora":
+            if release != actual_version:
+                issues.append(
+                    "Version Fedora WSL différente "
+                    "de la cible."
+                )
+
+        if missing:
+            issues.append(
+                "Outils absents : "
+                + ", ".join(missing)
+            )
+
+        self.tools_ok = not issues
+
+        if self.tools_ok:
+            self.verification_status.setText(
+                "Outils de préparation présents"
+            )
+        else:
+            self.verification_status.setText(
+                str(len(issues))
+                + " problème(s) détecté(s)"
+            )
+
+        self.verification_log.setPlainText(
+            "Distribution : " + target
+            + "\nVersion : " + release
+            + "\nWSL : " + env
+            + "\nInstallateur prévu : "
+            + INSTALLERS[target]
+            + "\nGestionnaire cible : "
+            + MANAGERS[target]
+            + "\n\n"
+            + (
+                "\n".join(issues)
+                if issues
+                else "Aucun outil de construction manquant."
+            )
+            + "\n\n"
+            "ATTENTION : cette vérification concerne "
+            "l'environnement WSL.\n"
+            "Elle ne valide pas l'installateur, "
+            "les dépôts dans le système cible, "
+            "ni le démarrage de l'ISO."
+        )
+
+    # --------------------------------------------------------
+    # ANALYSE DES PAQUETS
+    # --------------------------------------------------------
+
+    def analyze_packages(self):
+        env = self.project_environment()
+
+        if not env:
+            return
+
+        revision = self.revision
+        family = self.family_name
+
+        packages = self.target_packages()
+
+        self.refresh_target_packages()
+
+        self.verification_log.setPlainText(
+            "Simulation native en cours..."
+        )
+
+        self.job(
+            simulate_packages,
+            (env, family, packages),
+            lambda data, error:
+                self.analysis_done(
+                    revision,
+                    family,
+                    data,
+                    error
+                )
+        )
+
+    def analysis_done(
+        self,
+        revision,
+        family,
+        data,
+        error
+    ):
+        if revision != self.revision:
+            return
+
+        if error:
+            self.analysis_ok = False
+            self.verification_log.setPlainText(error)
+            return
+
+        output, stderr, code = data
+
+        # DNF5 --assumeno peut retourner un code non nul
+        # lors d'un refus volontaire.
+        # On ne transforme pas ce code en succès sans preuve.
+
+        self.analysis_ok = code == 0
+
+        self.verification_log.setPlainText(
+            "Famille : " + family
+            + "\nCode retour : " + str(code)
+            + "\nStatut : "
+            + (
+                "Simulation terminée"
+                if self.analysis_ok
+                else "Résultat non validé"
+            )
             + "\n\n"
             + output
             + "\n"
             + stderr
             + "\n\n"
-            "Simulation indicative : les dépendances "
-            "d'un système cible vierge peuvent différer "
-            "de celles de l'environnement WSL."
+            "La simulation utilise les paquets déjà présents "
+            "dans WSL et ne représente pas nécessairement "
+            "les dépendances d'un système cible vierge."
         )
 
-    # ============================================================
-    # EXPORT PROJET ISO
-    # ============================================================
+        if not self.analysis_ok:
+            self.warning(
+                "Analyse non validée.\n"
+                "Consulte la sortie native."
+            )
 
-    def export_project(self):
-        directory = QFileDialog.getExistingDirectory(
-            self,
-            "Choisir le dossier de destination"
-        )
+    # --------------------------------------------------------
+    # PROJET / ISO
+    # --------------------------------------------------------
 
-        if not directory:
-            return
-
-        data = {
-            "application": APP_NAME,
+    def project_data(self):
+        return {
+            "application": "Universal Linux Builder",
             "version": VERSION,
-            "distribution": self.family,
+            "family": self.family_name,
             "release": self.release.currentText(),
+            "installer": INSTALLERS[self.family_name],
+            "manager": MANAGERS[self.family_name],
             "wsl": self.associations.get(
-                self.family,
+                self.family_name,
                 ""
             ),
-            "installer": INSTALLERS[self.family],
-            "package_manager": MANAGERS[self.family],
             "desktop": self.desktop.currentText(),
-            "init": self.init_system.currentText(),
             "kernel": self.kernel.currentText(),
-            "display_server": self.display_server.currentText(),
+            "init": self.init.currentText(),
+            "display": self.display.currentText(),
             "audio": self.audio.currentText(),
+            "bootloader": self.boot.currentText(),
             "boot_mode": self.boot_mode.currentText(),
-            "packages": self.project_packages(),
-            "bootable_iso_created": False,
+            "options": {
+                name: checkbox.isChecked()
+                for name, checkbox in self.flags.items()
+            },
+            "packages": self.target_packages(),
+            "tools_verified": self.tools_ok,
+            "dependency_analysis_ok": self.analysis_ok,
+            "boot_verified": False,
+            "installer_verified": False,
             "ventoy_verified": False
         }
 
+    def export_current_project(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Choisir le dossier d'export"
+        )
+
+        if not folder:
+            return
+
         try:
-            target = (
-                Path(directory)
-                / "universal_linux_project.json"
+            destination = export_project(
+                self.project_data(),
+                folder
             )
 
-            target.write_text(
-                json.dumps(
-                    data,
-                    ensure_ascii=False,
-                    indent=2
-                ),
-                encoding="utf-8"
-            )
-
-            packages_file = (
-                Path(directory)
-                / "packages.txt"
-            )
-
-            packages_file.write_text(
-                "\n".join(
-                    self.project_packages()
-                )
-                + "\n",
-                encoding="utf-8"
-            )
-
-        except OSError as error:
-            self.message(
-                error
-            )
+        except Exception as exc:
+            self.warning(str(exc))
             return
 
         self.iso_log.setPlainText(
-            "Manifeste exporté :\n"
-            + str(target)
+            "Projet exporté dans :\n"
+            + destination
             + "\n\n"
-            "Liste des paquets :\n"
-            + str(packages_file)
+            "Fichiers :\n"
+            "universal_linux_project.json\n"
+            "packages.txt\n"
+            "README.txt"
+        )
+
+        self.information(
+            "Projet exporté."
+        )
+
+    def create_iso(self):
+        family = self.family_name
+
+        if family not in (
+            "Debian",
+            "Arch Linux"
+        ):
+            self.warning(
+                "Construction ISO non implémentée "
+                "pour " + family
+            )
+            return
+
+        if not self.tools_ok:
+            self.warning(
+                "Vérifie d'abord les outils de construction."
+            )
+
+            self.tabs.setCurrentIndex(3)
+            return
+
+        if not self.analysis_ok:
+            self.warning(
+                "L'analyse des paquets doit être validée "
+                "avant la construction."
+            )
+
+            self.tabs.setCurrentIndex(3)
+            return
+
+        env = self.project_environment()
+
+        if not env:
+            return
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Choisir un dossier Windows vide"
+        )
+
+        if not folder:
+            return
+
+        if any(Path(folder).iterdir()):
+            self.warning(
+                "Le dossier de destination doit être vide."
+            )
+            return
+
+        if not self.confirm(
+            "Lancer la construction expérimentale "
+            + family
+            + " ?\n\n"
+            "Cette opération peut durer longtemps et "
+            "nécessiter plusieurs Go d'espace.\n\n"
+            "L'installation sur disque, BIOS/UEFI "
+            "et Ventoy ne sont pas garantis."
+        ):
+            return
+
+        self.iso_log.setPlainText(
+            "Construction en cours..."
+        )
+
+        self.job(
+            build_iso,
+            (
+                env,
+                family,
+                self.release.currentText(),
+                self.target_packages(),
+                folder
+            ),
+            self.build_done
+        )
+
+    def build_done(self, data, error):
+        if error:
+            self.iso_log.setPlainText(
+                "ÉCHEC DE CONSTRUCTION\n\n"
+                + error
+            )
+
+            self.warning(
+                "Construction échouée.\n"
+                "Consulte le journal."
+            )
+            return
+
+        files, report = data
+
+        self.iso_log.setPlainText(
+            json.dumps(
+                files,
+                ensure_ascii=False,
+                indent=2
+            )
             + "\n\n"
-            "La création de l'ISO bootable "
-            "reste à implémenter."
+            "Amorçage : NON TESTÉ\n"
+            "Installateur : NON TESTÉ\n"
+            "Ventoy : NON TESTÉ\n\n"
+            + report[-10000:]
+        )
+
+        self.information(
+            "Fichier ISO produit.\n\n"
+            "Teste son démarrage et son installation "
+            "dans une machine virtuelle avant "
+            "de l'utiliser sur un PC."
         )
 
 
-# ================================================================
+# ============================================================
 # DEMARRAGE
-# ================================================================
+# ============================================================
 
 if __name__ == "__main__":
-    app = QApplication(
-        sys.argv
-    )
-
-    app.setStyle(
-        "Fusion"
-    )
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
 
     window = UniversalLinuxBuilder()
-
     window.show()
 
-    sys.exit(
-        app.exec()
-    )
+    sys.exit(app.exec())
