@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.0.8
+- **Correctif Debian : ISO qui démarre sans interface (« Authentication failure »)**. Cause trouvée dans le code de `live-config` : le composant `0030-user-setup` ne crée l'utilisateur live que si le paquet `user-setup` est installé, or ce paquet (comme `sudo`, `locales`, `keyboard-configuration`, `live-tools`) n'est qu'une *recommandation* de `live-config`. Sans utilisateur, la connexion automatique échoue et l'écran de connexion n'a personne à connecter.
+- Paquets indispensables ajoutés explicitement à l'image Debian (`ulb/precheck.py`) : session live, serveur graphique (Xorg, libinput, pilotes) et greeter `lightdm-gtk-greeter`.
+- **Contrôle après construction** : chaque paquet demandé est vérifié dans le chroot de live-build ; la construction échoue (« ISO INCOMPLÈTE, paquets absents… ») au lieu de livrer une ISO inutilisable.
+- La chaîne d'installation affiche les nouvelles lignes (session live, serveur graphique, contrôle après construction).
+
 ## 2.0.7
 - **Virtualisation, affichage** : la machine est lancée en arrière-plan et l'application vérifie que l'affichage répond (« Machine démarrée, affichage prêt ») avant d'ouvrir l'adresse web. Si le paquet noVNC est absent, il est téléchargé depuis GitHub (git) au lieu d'échouer.
 - Mode « VNC (client externe) » : le journal rappelle qu'il faut un client VNC (adresse `localhost:5900`) et conseille le mode Web sinon. Mode WSLg : avertissement si aucun affichage n'est détecté.

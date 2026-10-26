@@ -1,4 +1,5 @@
 from .constants import DISPLAY_MANAGERS, INSTALLERS
+from .precheck import precheck_rows
 
 
 def installer_checklist(family, desktop, packages, live_packages):
@@ -146,6 +147,8 @@ def installer_checklist(family, desktop, packages, live_packages):
             activation[0],
             activation[1]
         ))
+
+    rows += precheck_rows(family, desktop, names)
 
     rows.append((
         "Démarrage sous Ventoy / UEFI / BIOS",

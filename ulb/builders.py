@@ -18,6 +18,7 @@ from .constants import (
     VERSION
 )
 from .environments import verify_tools
+from .precheck import debian_postcheck
 from .wsl import Control, decode, execute, wsl_stream
 
 CHUNK = 4 * 1024 * 1024
@@ -97,7 +98,8 @@ def debian_script(workspace, release, packages, options):
             if options.get("flathub")
             else ""
         )
-        + "lb build"
+        + "lb build; "
+        + debian_postcheck(package_list)
     )
 
 

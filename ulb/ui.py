@@ -14,6 +14,7 @@ from .vm import INFO_MARKER, URL_MARKER, install_vm_tools, reset_vm_disk, run_vm
 from .project import export_project
 from .projects import normalize_project, read_project
 from .checklist import installer_checklist
+from .precheck import live_essentials
 from .settings import load_settings, save_settings
 from .logos import logo
 from .packages import parse_search, search_packages, simulate_packages
@@ -617,9 +618,19 @@ class UniversalLinuxBuilder(QMainWindow):
             self.refresh_chain()
 
     def iso_packages(self):
+        packages = set(self.target_packages()) | set(
+            LIVE_INSTALLER.get(self.family_name, [])
+        )
+
         return sorted(
-            set(self.target_packages())
-            | set(LIVE_INSTALLER.get(self.family_name, []))
+            packages
+            | set(
+                live_essentials(
+                    self.family_name,
+                    self.desktop.currentText(),
+                    packages
+                )
+            )
         )
 
     def chain_rows(self):
