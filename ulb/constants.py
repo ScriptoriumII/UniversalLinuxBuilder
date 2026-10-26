@@ -3,7 +3,7 @@ import os
 import re
 
 
-VERSION = "2.0.1"
+VERSION = "2.0.2"
 
 FAMILIES = [
     "Debian",
@@ -82,7 +82,7 @@ BUILD_TOOLS = {
         ("mksquashfs", "squashfs-tools"),
         ("xorriso", "xorriso"),
         ("ksflatten", "pykickstart"),
-        ("rpm:fedora-kickstarts", "fedora-kickstarts"),
+        ("rpm:fedora-kickstarts|spin-kickstarts", "fedora-kickstarts"),
         ("rpm:lorax-lmc-novirt", "lorax-lmc-novirt")
     ],
     "Arch Linux": [

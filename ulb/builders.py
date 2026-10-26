@@ -83,11 +83,11 @@ def fedora_script(workspace, release, packages, desktop):
         "set -eu; "
         "mkdir -p " + shlex.quote(workspace) + "/tmp; "
         "cd " + shlex.quote(workspace) + "; "
-        "base=$(rpm -ql fedora-kickstarts 2>/dev/null "
+        "base=$(rpm -ql fedora-kickstarts spin-kickstarts 2>/dev/null "
         "| grep '/fedora-live-base[.]ks$' "
         "| head -n 1 || true); "
         'test -n "$base" || { '
-        'echo "fedora-kickstarts ne fournit pas '
+        'echo "Les kickstarts (fedora-kickstarts / spin-kickstarts) ne fournissent pas '
         'fedora-live-base.ks" >&2; exit 1; }; '
         'dir=$(dirname "$base"); '
         'ks="$dir"/' + shlex.quote(kickstart) + "; "

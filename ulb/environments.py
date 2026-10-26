@@ -155,9 +155,12 @@ def check_tools(env, family):
 
     for executable, package in BUILD_TOOLS[family]:
         if executable.startswith("rpm:"):
-            test = (
-                "rpm -q --quiet "
-                + shlex.quote(executable[4:])
+            # « a|b » : plusieurs noms de paquet possibles
+            # (fedora-kickstarts s'appelle spin-kickstarts sur
+            # certaines versions).
+            test = " || ".join(
+                "rpm -q --quiet " + shlex.quote(name)
+                for name in executable[4:].split("|")
             )
 
         else:
@@ -247,6 +250,30 @@ def update_repositories(env, family, control=None):
     )
 
 
+def fedora_install_command(missing):
+    """Installe les paquets manquants ; le paquet des kickstarts est
+    résolu par le fichier qu'il fournit, car son nom varie
+    (fedora-kickstarts / spin-kickstarts)."""
+
+    others = " ".join(
+        shlex.quote(name)
+        for name in missing
+        if name != "fedora-kickstarts"
+    )
+
+    if "fedora-kickstarts" not in missing:
+        return "dnf5 -y install " + others
+
+    return (
+        "ks=$(dnf5 repoquery -q --whatprovides "
+        "'*/fedora-live-base.ks' 2>/dev/null "
+        "| sed 's/-[0-9].*//' | sort -u | head -n 1); "
+        'ks=${ks:-spin-kickstarts}; '
+        'echo "Paquet des kickstarts : $ks"; '
+        'dnf5 -y install "$ks" ' + others
+    )
+
+
 def install_tools(env, family, control=None):
     if family not in (
         "Debian",
@@ -282,7 +309,7 @@ def install_tools(env, family, control=None):
             "apt-get install -y --no-install-recommends "
             + arguments
         ),
-        "Fedora": "dnf5 -y install " + arguments,
+        "Fedora": fedora_install_command(missing),
         "Arch Linux": (
             ARCH_KEYRING
             + "pacman -Syu --noconfirm --needed "

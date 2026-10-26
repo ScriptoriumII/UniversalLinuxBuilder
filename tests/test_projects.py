@@ -49,3 +49,25 @@ def test_arch_commands_initialise_the_keyring(monkeypatch):
         command.startswith("pacman-key --init && pacman-key --populate archlinux")
         for command in seen
     ) and len(seen) == 2
+
+
+def test_fedora_kickstarts_package_name_is_resolved():
+    from ulb.environments import fedora_install_command
+
+    command = fedora_install_command(["fedora-kickstarts", "lorax"])
+    assert "--whatprovides '*/fedora-live-base.ks'" in command
+    assert "spin-kickstarts" in command and "lorax" in command
+    assert fedora_install_command(["lorax"]) == "dnf5 -y install lorax"
+
+
+def test_rpm_tool_states_are_parsed(monkeypatch):
+    from ulb import environments
+
+    def fake_wsl(env, command, timeout=300, root=False):
+        return "\n".join(
+            entry[0] + ":OK" for entry in environments.BUILD_TOOLS["Fedora"]
+        ), "", 0
+
+    monkeypatch.setattr(environments, "wsl", fake_wsl)
+    rows = environments.check_tools("x", "Fedora")
+    assert all(state == "Présent" for _, _, state in rows), rows
