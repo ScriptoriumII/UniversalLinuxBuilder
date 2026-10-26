@@ -1,0 +1,6 @@
+Distribution : Arch Linux
+Environnement WSL : archlinux
+Code : 41
+
+Installer archiso
+
