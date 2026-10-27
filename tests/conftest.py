@@ -41,6 +41,11 @@ def fake_wsl(tmp_path, monkeypatch):
         for executable, _package in tools:
             stub = bin_dir / executable
 
+            # xorriso : le vrai outil est utilisé quand il est installé
+            # (les tests de remaster l'exécutent pour de bon).
+            if executable == "xorriso" and shutil.which("xorriso"):
+                continue
+
             if not stub.exists():
                 stub.write_text("#!/bin/sh\nexit 0\n")
                 stub.chmod(0o755)

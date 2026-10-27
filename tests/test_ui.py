@@ -159,3 +159,66 @@ def test_build_shows_percentage_and_stores_history(
     assert window.build_summary and window.build_summary["total"] > 0
     assert "Debian" in window.config["build_history"]
     window.close()
+
+
+@posix_only
+def test_remaster_panel_for_gentoo_and_slackware(fake_wsl, monkeypatch, tmp_path):
+    app, window = make_window(fake_wsl, monkeypatch)
+    pump(app, lambda: window.worker is None and bool(window.inventory), 15)
+
+    assert window.remaster_box.isHidden()
+    assert not window.build_options_box.isHidden()
+
+    window.change_family("Gentoo")
+    assert not window.remaster_box.isHidden()
+    assert window.build_options_box.isHidden()
+    assert window.remaster_variant.count() >= 1
+    assert window.build_button.text() == "Créer l'ISO personnalisée"
+    assert window.remaster_remove.isHidden()
+    assert window.remaster_env.count() >= 1  # WSL Debian/Arch, pas Gentoo
+
+    rows = window.chain_rows()
+    assert any(row[0].startswith("Amorçage") for row in rows)
+
+    window.change_family("Slackware")
+    assert not window.remaster_remove.isHidden()
+
+    window.change_family("Debian")
+    assert window.remaster_box.isHidden()
+    window.close()
+
+
+@posix_only
+def test_remaster_from_the_ui(fake_wsl, monkeypatch, tmp_path, workspaces):
+    import shutil
+
+    import pytest
+
+    if shutil.which("xorriso") is None:
+        pytest.skip("xorriso absent")
+
+    from test_remaster import listing, make_iso
+
+    app, window = make_window(fake_wsl, monkeypatch)
+    pump(app, lambda: window.worker is None and bool(window.inventory), 15)
+
+    iso = make_iso(tmp_path, "gentoo", {"data.txt": "d"}, volid="GENTOO")
+    destination = tmp_path / "sortie"
+    destination.mkdir()
+    window.change_family("Gentoo")
+    window.remember_remaster(source_iso=str(iso))
+    window.remaster_env.setCurrentText("Debian")
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory",
+        staticmethod(lambda *a, **k: str(destination))
+    )
+
+    window.create_iso()
+    pump(app, lambda: window.worker is None, 60)
+    app.processEvents()
+
+    produced = list(destination.glob("ULB_Gentoo_*.iso"))
+    assert len(produced) == 1
+    assert "data.txt" in listing(produced[0])
+    assert "RÉSULTAT" in window.iso_log.toPlainText()
+    window.close()

@@ -28,6 +28,25 @@ Prérequis : Windows 10/11 avec WSL2 et une distribution de la même famille que
 (Debian pour Debian, Fedora de la **même version** pour Fedora, Arch pour Arch).
 L'onglet **WSL2** détecte les distributions, vérifie/installe les outils de construction.
 
+## Gentoo et Slackware : ISO officielle puis remaster
+
+Ces deux familles n'ont **pas de construction** et n'ont pas besoin de leur propre WSL. Dans l'onglet
+**ISO**, après avoir choisi Gentoo ou Slackware :
+
+1. **Source** : *Télécharger l'ISO officielle* (miroirs officiels, reprise possible, empreinte SHA256/SHA512
+   vérifiée, ISO refusée si elle ne correspond pas) ou *Importer une ISO…* déjà présente sur le disque.
+   L'adresse reste modifiable si un miroir change.
+2. **WSL d'assemblage** : un WSL Debian, Fedora ou Arch Linux ; bouton *Installer xorriso* si besoin.
+3. **Personnaliser** : *Fichiers à ajouter* (le contenu d'un dossier Windows est copié à la racine de l'ISO) ;
+   pour Slackware, *Séries à retirer* (`kde`, `y`…) et retrait de `source/` pour gagner de la place.
+4. **Créer l'ISO personnalisée** : Gentoo reprend l'amorçage de l'ISO d'origine (`xorriso -boot_image any replay`) ;
+   Slackware extrait l'arbre puis régénère l'ISO avec la commande officielle du `isolinux/README.TXT`
+   (BIOS + UEFI). Dans les deux cas l'application **vérifie que les entrées d'amorçage sont présentes** et échoue sinon.
+5. **Tester** dans l'onglet Virtualisation (disque virtuel), puis démarrer sur ce disque.
+
+Limites : les paquets ne sont pas recompilés ni ajoutés au système installé (ajoute des fichiers, des scripts ou
+retire des séries) ; le retrait de séries Slackware n'a pas été validé avec l'installateur `setup`.
+
 ## Parcours
 
 1. **Distribution** – famille et version.

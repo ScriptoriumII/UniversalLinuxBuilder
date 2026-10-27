@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.0.11
+- **Gentoo et Slackware : ISO officielle puis remaster**, sans WSL dédié. Téléchargement depuis les miroirs officiels (reprise, vérification SHA256/SHA512, refus si l'empreinte diffère) ou import d'une ISO locale ; personnalisation avec xorriso dans n'importe quel WSL Debian/Fedora/Arch (`ulb/sources.py`, `ulb/remaster.py`, `ulb/ui_remaster.py`).
+- Gentoo : reprise de l'amorçage de l'ISO d'origine (`-boot_image any replay`) ; Slackware : arbre extrait puis commande officielle du README d'isolinux (BIOS + UEFI), séries retirables (`kde`, `y`…).
+- **Contrôle d'amorçage** après création : les entrées BIOS/UEFI doivent être identiques à l'ISO d'origine (Gentoo) ou présentes (Slackware), sinon la création échoue.
+- Onglet Virtualisation utilisable pour Gentoo et Slackware (essai de l'ISO remasterisée).
+- Tests avec le vrai xorriso (installé en CI). Un test a révélé que `-rm_r` doit être terminé par `--`.
+
 ## 2.0.10
 - **Poste neuf** : `lancer.bat` (Python via winget si absent, environnement `.venv`, PySide6, contrôle WSL2, lancement) et pré-contrôle intégré à `main.py` (`ulb/preflight.py`, bibliothèque standard uniquement).
 - `py main.py --check` : rapport Python ≥ 3.10, PySide6, fichiers de l'application, WSL2 (présence, version par défaut, distributions), virtualisation BIOS/UEFI, espace disque, avec la commande de correction pour chaque point.

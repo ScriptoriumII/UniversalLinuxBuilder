@@ -17,11 +17,13 @@ from .checklist import installer_checklist
 from .precheck import live_essentials
 from .settings import load_settings, save_settings
 from .logos import logo
+from .remaster import REMASTER_FAMILIES
+from .ui_remaster import RemasterMixin
 from .packages import parse_search, search_packages, simulate_packages
 from .wsl import CANCELLED, run
 
 
-class UniversalLinuxBuilder(QMainWindow):
+class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
     def __init__(self):
         super().__init__()
@@ -1221,14 +1223,18 @@ class UniversalLinuxBuilder(QMainWindow):
 
         family = self.family_name
 
-        if family not in BUILD_FAMILIES:
+        if family not in BUILD_FAMILIES + REMASTER_FAMILIES:
             self.warning(
-                "Virtualisation disponible pour Debian, Fedora "
-                "et Arch Linux."
+                "Virtualisation disponible pour Debian, Fedora, "
+                "Arch Linux, Gentoo et Slackware."
             )
             return
 
-        env = self.project_environment()
+        env = (
+            self.remaster_environment()
+            if family in REMASTER_FAMILIES
+            else self.project_environment()
+        )
 
         if not env:
             return
@@ -1343,6 +1349,9 @@ class UniversalLinuxBuilder(QMainWindow):
         )
 
     def selected_or_project_environment(self):
+        if self.family_name in REMASTER_FAMILIES:
+            return self.remaster_environment()
+
         name = self.associations.get(self.family_name, "")
 
         if self.environment_item(name) is not None:
@@ -1407,6 +1416,8 @@ class UniversalLinuxBuilder(QMainWindow):
 
         layout.addWidget(self.iso_note)
 
+        self.build_remaster_group(layout)
+
         layout.addWidget(
             QLabel("Chaîne d'installation")
         )
@@ -1425,6 +1436,7 @@ class UniversalLinuxBuilder(QMainWindow):
         layout.addWidget(self.chain_table)
 
         options = QGroupBox("Options de construction")
+        self.build_options_box = options
         form = QFormLayout(options)
 
         self.profile = self.combo(PROFILES)
@@ -1912,6 +1924,8 @@ class UniversalLinuxBuilder(QMainWindow):
         if self.inventory:
             self.apply_associations()
 
+        self.refresh_remaster()
+
     def release_changed(self, *_):
         self.invalidate()
         self.update_header()
@@ -1991,6 +2005,7 @@ class UniversalLinuxBuilder(QMainWindow):
             return
 
         self.inventory = items
+        self.refresh_remaster()
 
         self.fill(
             self.installed_table,
@@ -3311,6 +3326,10 @@ class UniversalLinuxBuilder(QMainWindow):
 
     def create_iso(self):
         family = self.family_name
+
+        if family in REMASTER_FAMILIES:
+            self.remaster_clicked()
+            return
 
         if family not in (
             "Debian",

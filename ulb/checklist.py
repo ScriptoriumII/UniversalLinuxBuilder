@@ -1,5 +1,6 @@
 from .constants import DISPLAY_MANAGERS, INSTALLERS
 from .precheck import precheck_rows
+from .remaster import REMASTER_FAMILIES
 
 
 def installer_checklist(family, desktop, packages, live_packages):
@@ -14,6 +15,20 @@ def installer_checklist(family, desktop, packages, live_packages):
     }
 
     rows = []
+
+    if family in REMASTER_FAMILIES:
+        rows = remaster_rows(family)
+
+        if "flatpak" in names:
+            rows.append((
+                "Flathub (Flatpak)",
+                "À configurer",
+                "flatpak est dans la liste ; ajoute Flathub après "
+                "l'installation : flatpak remote-add --if-not-exists "
+                "flathub https://dl.flathub.org/repo/flathub.flatpakrepo"
+            ))
+
+        return rows
 
     # Installateur graphique
 
@@ -177,3 +192,46 @@ def installer_checklist(family, desktop, packages, live_packages):
             ))
 
     return rows
+
+
+def remaster_rows(family):
+    """Gentoo / Slackware : pas de construction, remaster d'une ISO
+    officielle."""
+
+    installer = {
+        "Gentoo": "Fourni par l'ISO officielle (installation manuelle "
+                  "selon le handbook, ou interface de l'ISO live GUI).",
+        "Slackware": "setup (mode texte, installateur officiel de "
+                     "l'ISO)."
+    }[family]
+
+    return [
+        (
+            "Source : ISO officielle",
+            "À valider",
+            "Téléchargée depuis la source officielle (empreinte "
+            "vérifiée) ou importée par toi."
+        ),
+        (
+            "Installateur",
+            "Inclus",
+            installer
+        ),
+        (
+            "Personnalisation (xorriso)",
+            "Inclus",
+            "Fichiers ajoutés à la racine"
+            + (", séries retirées" if family == "Slackware" else "")
+            + " ; les paquets ne sont pas recompilés."
+        ),
+        (
+            "Amorçage BIOS/UEFI",
+            "Automatique",
+            "Repris de l'ISO d'origine et contrôlé après création."
+        ),
+        (
+            "Démarrage sous Ventoy / UEFI / BIOS",
+            "Non testé",
+            "À valider en machine virtuelle puis sur le PC."
+        )
+    ]
