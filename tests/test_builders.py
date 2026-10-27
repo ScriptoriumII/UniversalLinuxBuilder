@@ -130,7 +130,7 @@ def syntax_ok(script):
     return subprocess.run(["sh", "-n", "-c", script]).returncode == 0
 
 
-def run_clone(tmp_path, release, heads, fail=False):
+def run_clone(tmp_path, release, heads, fail=False, dumb=False):
     """Exécute la sélection de branche avec un faux git."""
 
     from ulb.builders import fedora_clone_command
@@ -146,7 +146,12 @@ def run_clone(tmp_path, release, heads, fail=False):
         'if [ "$1" = ls-remote ]; then\n'
         + ("  exit 128\n" if fail else "  printf '%s\\n' '" + listing + "'\n")
         + "  exit 0\nfi\n"
-        'echo "CLONE $*"\n'
+        + (
+            'case "$*" in *--depth*) '
+            'echo "fatal: dumb http transport does not support shallow '
+            'capabilities" >&2; exit 128;; esac\n' if dumb else ""
+        )
+        + 'echo "CLONE $*"\n'
     )
     git.chmod(0o755)
 
@@ -197,3 +202,18 @@ def test_fedora_script_embeds_clone_and_stays_valid_sh():
     assert "git ls-remote --heads" in script
     assert "Remote branch" not in script
     assert syntax_ok(script)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="sh requis")
+def test_fedora_clone_retries_without_depth_on_dumb_http(tmp_path):
+    result = run_clone(tmp_path, "44", ["f43"], dumb=True)
+
+    assert result.returncode == 0, result.stderr
+    assert "Clone superficiel refusé" in result.stdout
+    assert "CLONE clone --branch f43 https://pagure.io" in result.stdout
+    assert "--depth" not in result.stdout.split("Clone superficiel")[1]
+
+    # Serveur normal : un seul clonage superficiel.
+    result = run_clone(tmp_path, "43", ["f43"])
+    assert "Clone superficiel refusé" not in result.stdout
+    assert "--depth 1 --branch f43" in result.stdout

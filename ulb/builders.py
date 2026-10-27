@@ -207,9 +207,14 @@ def fedora_clone_command(release):
         'la construction peut échouer ou produire une image incomplète."; '
         "fi; "
         'echo "Clonage des kickstarts : branche $br"; '
-        'git clone --depth 1 --branch "$br" ' + KICKSTARTS_URL
-        + " kickstarts "
-        "|| { echo \"Clonage impossible : $br\" >&2; exit 1; }; "
+        # pagure.io peut répondre en HTTP « bête » (dumb) : pas de clone
+        # superficiel possible, d'où le second essai sans --depth.
+        'if ! git clone --depth 1 --branch "$br" ' + KICKSTARTS_URL
+        + " kickstarts; then "
+        'echo "Clone superficiel refusé : nouvel essai complet '
+        '(plus long)."; rm -rf kickstarts; '
+        'git clone --branch "$br" ' + KICKSTARTS_URL + " kickstarts "
+        "|| { echo \"Clonage impossible : $br\" >&2; exit 1; }; fi; "
     )
 
 

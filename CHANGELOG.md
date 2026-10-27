@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.0.23
+- **Fedora : « dumb http transport does not support shallow capabilities »**. Le choix de la branche (f43 en repli) fonctionnait, mais pagure.io répond en HTTP « dumb », qui n'accepte pas `git clone --depth 1`. Le clonage retente maintenant **sans `--depth`** (clone complet, plus long) quand le clone superficiel est refusé, après avoir supprimé le dossier partiel.
+- Testé avec un faux `git` qui refuse `--depth` ; non testé contre le vrai pagure.io.
+
 ## 2.0.22
 - **Fedora 44 : « Remote branch f44 not found »** (construction échouée dès le clonage des kickstarts). Cause, vérifiée dans la discussion Fedora « Custom live iso F44? » : les images officielles de Fedora 44 ne sont plus construites avec des kickstarts mais avec **kiwi** ; le dépôt `fedora-kickstarts` n'a donc pas de branche `f44`.
 - La construction liste les branches `fNN` du dépôt et choisit **la branche exacte si elle existe, sinon la plus récente inférieure** (tri numérique), en affichant un avertissement explicite. Réseau en panne ou aucune branche : message distinct et clair au lieu d'un « clonage impossible » générique.
