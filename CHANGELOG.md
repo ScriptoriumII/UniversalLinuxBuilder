@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.0.14
+- **Fedora : la recherche de paquets ne trouvait rien** (firefox, vlc : « 0 résultats », seule la ligne « Repositories loaded » s'affichait). L'analyseur n'attendait que le format dnf4 (`nom.arch : résumé`). La recherche interroge maintenant `dnf5 repoquery` avec un format maîtrisé (nom|version|résumé, version affichée), complété par `dnf5 search -q` ; l'analyseur accepte les deux présentations et ignore les lignes de progression.
+- Si rien n'est trouvé sous Fedora, le message explique que vlc et les codecs viennent de RPM Fusion (option « Dépôts tiers Fedora »).
+- Non vérifié sur un vrai Fedora 44 : le format exact de dnf5 n'a pas pu être observé ici.
+
 ## 2.0.13
 - **Thèmes** : Système, Clair, Sombre (sélecteur « Thème » en haut à droite, choix mémorisé). « Système » suit le réglage de Windows et change à chaud quand il change.
 - Toutes les couleurs viennent de `ulb/theme.py` (palettes sombre et claire, contrastes vérifiés par un test) ; les styles en dur ont été remplacés par des rôles, y compris les cartes de distribution, les états colorés et les indicateurs WSL.

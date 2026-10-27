@@ -2907,6 +2907,14 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
                 if code or not rows
                 else "Double-clique pour ajouter un paquet."
             )
+            + (
+                "\n\nAucun paquet trouvé. Sur Fedora, certains logiciels "
+                "(vlc, ffmpeg complet, codecs) ne sont pas dans les dépôts "
+                "officiels mais dans RPM Fusion : active « Dépôts tiers "
+                "Fedora » puis relance la recherche."
+                if family == "Fedora" and not rows and not code
+                else ""
+            )
         )
 
     # --------------------------------------------------------

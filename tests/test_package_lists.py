@@ -64,3 +64,25 @@ def test_all_package_names_are_shell_safe():
 
     for name in names:
         assert SAFE_PACKAGE.match(name), name
+
+
+def test_fedora_search_parses_dnf5_and_dnf4_formats():
+    from ulb.packages import fedora_search_command, parse_search
+
+    out = (
+        "Updating and loading repositories:\n"
+        "Repositories loaded.\n"
+        "firefox|150.0-1.fc44|Mozilla Firefox Web browser\n"
+        "Matched fields: name, summary\n"
+        " vlc.x86_64   Multimedia player\n"
+        "mpv.x86_64 : Movie player\n"
+    )
+    rows = parse_search("Fedora", out)
+    names = {r[0]: r for r in rows}
+    assert set(names) == {"firefox", "vlc", "mpv"}
+    assert names["firefox"][1] == "150.0-1.fc44"
+    assert parse_search("Fedora", "Repositories loaded.\n") == []
+
+    command = fedora_search_command("fire fox; rm")
+    assert "repoquery" in command and "dnf5 search" in command
+    assert "'*fire fox; rm*'" in command

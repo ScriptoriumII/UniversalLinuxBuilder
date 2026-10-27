@@ -4,10 +4,31 @@ from .constants import SAFE_PACKAGE
 from .wsl import wsl
 
 
+def fedora_search_command(query):
+    """dnf5 affiche sa progression (« Updating and loading
+    repositories ») et un format de recherche différent de dnf4.
+    On interroge d'abord repoquery avec un format maîtrisé
+    (nom|version|résumé), puis la recherche classique (nom + résumé)."""
+
+    quoted = shlex.quote(query)
+    glob = shlex.quote("*" + query + "*")
+
+    return (
+        "LC_ALL=C; { dnf5 repoquery -q --available --latest-limit=1 "
+        "--queryformat '%{name}|%{version}-%{release}|%{summary}\\n' "
+        + glob
+        + "; dnf5 search -q "
+        + quoted
+        + "; } 2>/dev/null"
+    )
+
+
 def search_packages(env, family, query):
+    if family == "Fedora":
+        return wsl(env, fedora_search_command(query), 300)
+
     command = {
         "Debian": "apt-cache search",
-        "Fedora": "dnf5 search",
         "Arch Linux": "pacman -Ss",
         "Gentoo": "emerge --search",
         "Slackware": "slackpkg search"
@@ -44,14 +65,20 @@ def parse_search(family, output):
                 name, description = match.groups()
 
         elif family == "Fedora":
+            piped = re.match(
+                r"^([\w+.-]+)\|([^|]*)\|(.*)$", line
+            )
             match = re.match(
                 r"^([\w+.-]+)\."
                 r"(?:x86_64|noarch|aarch64|i686|src)"
-                r"\s*:\s*(.+)$",
+                r"(?:\s*:\s*|\s+)(.+)$",
                 line
             )
 
-            if match:
+            if piped:
+                name, version, description = piped.groups()
+
+            elif match:
                 name, description = match.groups()
 
         elif family == "Arch Linux":
