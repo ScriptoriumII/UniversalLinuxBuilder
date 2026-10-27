@@ -148,8 +148,8 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.make_system()
         self.make_applications()
         self.make_verification()
-        self.make_virtualization()
         self.make_iso()
+        self.make_virtualization()
         self.make_wsl()
 
         footer = QHBoxLayout()
@@ -1313,7 +1313,6 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.vm_log.document().setMaximumBlockCount(5000)
         layout.addWidget(self.vm_log, 1)
 
-        self.next_button(layout, 5)
 
         self.refresh_vm_defaults()
 

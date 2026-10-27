@@ -222,3 +222,16 @@ def test_remaster_from_the_ui(fake_wsl, monkeypatch, tmp_path, workspaces):
     assert "data.txt" in listing(produced[0])
     assert "RÉSULTAT" in window.iso_log.toPlainText()
     window.close()
+
+
+@posix_only
+def test_tool_tabs_are_last(fake_wsl, monkeypatch):
+    app, window = make_window(fake_wsl, monkeypatch)
+    names = [
+        window.tabs.tabText(i) for i in range(window.tabs.count())
+    ]
+
+    assert names[-3:] == ["ISO", "Virtualisation", "WSL2"]
+    assert names[:5] == [
+        "Distribution", "Système", "Applications", "Vérification", "ISO"
+    ]

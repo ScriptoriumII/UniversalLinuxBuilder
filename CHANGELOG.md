@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.0.15
+- **Ordre des onglets** : Distribution, Système, Applications, Vérification, **ISO**, puis **Virtualisation** et **WSL2** à l'extrême droite. Le parcours de création d'ISO n'est plus coupé par les onglets d'outils (test en VM, gestion WSL2). Le bouton « Continuer » de Vérification mène désormais à ISO.
+
 ## 2.0.14
 - **Fedora : la recherche de paquets ne trouvait rien** (firefox, vlc : « 0 résultats », seule la ligne « Repositories loaded » s'affichait). L'analyseur n'attendait que le format dnf4 (`nom.arch : résumé`). La recherche interroge maintenant `dnf5 repoquery` avec un format maîtrisé (nom|version|résumé, version affichée), complété par `dnf5 search -q` ; l'analyseur accepte les deux présentations et ignore les lignes de progression.
 - Si rien n'est trouvé sous Fedora, le message explique que vlc et les codecs viennent de RPM Fusion (option « Dépôts tiers Fedora »).

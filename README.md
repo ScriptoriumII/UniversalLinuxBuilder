@@ -58,8 +58,12 @@ Le choix est mémorisé.
 2. **Système** – bureau, noyau, audio, GRUB (UEFI ou BIOS) et options.
 3. **Applications** – recherche de paquets dans le gestionnaire de l'environnement WSL.
 4. **Vérification** – outils, puis analyse des dépendances (simulation).
-5. **Virtualisation** – essayer une ISO dans QEMU/KVM (web noVNC, fenêtre WSLg ou VNC), installer sur un disque virtuel puis démarrer sur ce disque.
-6. **ISO** – profil Standard/Léger, options, **Créer l'ISO**, **Tester le démarrage (QEMU)**. La barre de construction affiche un pourcentage et une estimation du temps restant (affinée à chaque construction réussie).
+5. **ISO** – profil Standard/Léger, options, **Créer l'ISO**, **Tester le démarrage (QEMU)**. La barre de construction affiche un pourcentage et une estimation du temps restant (affinée à chaque construction réussie).
+
+Deux onglets d'outils, volontairement à l'extrême droite pour ne pas se mélanger avec la création d'ISO :
+
+6. **Virtualisation** – essayer une ISO dans QEMU/KVM (web noVNC, fenêtre WSLg ou VNC), installer sur un disque virtuel puis démarrer sur ce disque.
+7. **WSL2** – distributions, outils de construction, dépôts.
 
 Un dossier de sortie contient : `ULB_<famille>_<version>_<date-heure>.iso`, `SHA256SUMS` (complété, jamais écrasé), `build_report_<date-heure>.txt`. Le dossier peut déjà contenir d'autres ISO : tes ISO existantes ne sont jamais écrasées
 (et `boot_test_uefi.png` après un test de démarrage).
