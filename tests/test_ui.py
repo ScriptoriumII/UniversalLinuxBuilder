@@ -457,3 +457,35 @@ def test_fedora_analysis_validated_despite_assumeno_exit_code(
     )
     assert window.analysis_ok is False
     assert warnings and "No match for argument" in warnings[0]
+
+
+def test_vanilla_desktop_option(fake_wsl, monkeypatch):
+    from ulb.vanilla import desktop_packages
+
+    app, window = make_window(fake_wsl, monkeypatch)
+
+    window.change_family("Debian")
+    window.desktop.setCurrentText("GNOME")
+    assert window.vanilla.isEnabled()
+    assert not window.vanilla_active()
+    assert "gnome-core" in window.target_packages()
+
+    window.vanilla.setChecked(True)
+    packages = window.target_packages()
+    assert window.vanilla_active()
+    assert "gnome-core" not in packages
+    assert "gnome-shell" in packages
+    assert window.build_options()["vanilla"] is True
+
+    window.desktop.setCurrentText("Aucun")
+    assert not window.vanilla.isEnabled()
+    assert not window.vanilla_active()
+
+    window.change_family("Gentoo")
+    assert not window.vanilla.isEnabled()
+
+    assert "gnome-core" in desktop_packages("Debian", "GNOME")
+    assert "gnome-core" not in desktop_packages("Debian", "GNOME", True)
+    assert desktop_packages("Debian", "Budgie", True) == (
+        desktop_packages("Debian", "Budgie")
+    )

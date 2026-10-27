@@ -23,6 +23,7 @@ from .catalog import (
 )
 from .remaster import REMASTER_FAMILIES
 from .ui_advanced import AdvancedMixin
+from .vanilla import desktop_packages, vanilla_note, vanilla_supported
 from .ui_remaster import RemasterMixin
 from .ui_ventoy import VentoyMixin
 from .packages import parse_search, search_packages, simulate_packages
@@ -1017,9 +1018,21 @@ class UniversalLinuxBuilder(
             ("Amorçage", self.boot_mode)
         ]
 
+        self.vanilla = QCheckBox("Bureau vanille")
+        self.vanilla.toggled.connect(self.vanilla_changed)
+        self.flags = {"Bureau vanille": self.vanilla}
+
+        desktop_row = QHBoxLayout()
+        desktop_row.addWidget(self.desktop)
+        desktop_row.addWidget(self.vanilla)
+        desktop_row.addStretch()
+
         for label, widget in fields:
             widget.setMaximumWidth(400)
-            form.addRow(label, widget)
+            form.addRow(
+                label,
+                desktop_row if widget is self.desktop else widget
+            )
 
             widget.currentTextChanged.connect(
                 self.invalidate
@@ -1027,7 +1040,12 @@ class UniversalLinuxBuilder(
 
         layout.addLayout(form)
 
-        self.flags = {}
+        self.vanilla_label = QLabel()
+        self.vanilla_label.setWordWrap(True)
+        self.role(self.vanilla_label, "muted")
+        layout.addWidget(self.vanilla_label)
+
+        self.desktop.currentTextChanged.connect(self.refresh_vanilla)
 
         for name, enabled in [
             ("Wi-Fi", True),
@@ -2076,6 +2094,8 @@ class UniversalLinuxBuilder(
         if hasattr(self, "wsl_choice"):
             self.refresh_environment_choice()
 
+        self.refresh_vanilla()
+
     def release_changed(self, *_):
         self.invalidate()
         self.update_header()
@@ -3009,9 +3029,10 @@ class UniversalLinuxBuilder(
         )
 
         packages.update(
-            DESKTOPS[family].get(
+            desktop_packages(
+                family,
                 self.desktop.currentText(),
-                []
+                self.vanilla_active()
             )
         )
 
@@ -3072,7 +3093,7 @@ class UniversalLinuxBuilder(
 
         return package_origins(
             TARGET_BASE[family],
-            DESKTOPS[family].get(desktop, []),
+            desktop_packages(family, desktop, self.vanilla_active()),
             desktop,
             AUDIO[family].get(audio, []),
             audio,
@@ -3525,6 +3546,32 @@ class UniversalLinuxBuilder(
             "sans restriction."
         )
 
+    def vanilla_active(self):
+        return self.vanilla.isChecked() and vanilla_supported(
+            self.family_name, self.desktop.currentText()
+        )
+
+    def refresh_vanilla(self, *_):
+        family = self.family_name
+        desktop = self.desktop.currentText()
+        supported = vanilla_supported(family, desktop)
+
+        self.vanilla.setEnabled(supported)
+        self.vanilla.setToolTip(vanilla_note(family, desktop))
+        self.vanilla_label.setText(
+            "Bureau vanille actif — " + vanilla_note(family, desktop)
+            if self.vanilla.isChecked() and supported
+            else ""
+        )
+        self.vanilla_label.setVisible(bool(self.vanilla_label.text()))
+
+    def vanilla_changed(self, *_):
+        self.refresh_vanilla()
+        self.invalidate()
+
+        if hasattr(self, "packages_table"):
+            self.refresh_target_packages()
+
     def profile_changed(self, name):
         light = name == "Léger"
 
@@ -3655,6 +3702,7 @@ class UniversalLinuxBuilder(
                 and self.flags[FEDORA_THIRD_PARTY].isChecked()
             ),
             "cleanup": self.cleanup_option.isChecked(),
+            "vanilla": self.vanilla_active(),
             "advanced": self.advanced_data(),
             "kernel_package": {
                 "Stable": "linux",

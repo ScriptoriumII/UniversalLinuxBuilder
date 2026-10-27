@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.0.24
+- **Option « Bureau vanille »** (onglet Système, à droite du choix du bureau). Elle remplace le méta-paquet habituel (`gnome-core`, `kde-plasma-desktop`, `xfce4`…) par la session, le gestionnaire de connexion, le gestionnaire de fichiers et les réglages seulement, sans applications ni réglages ajoutés par la distribution. Pour Debian, `--apt-recommends false` est aussi appliqué.
+- Disponible pour GNOME, KDE Plasma et Xfce sur Debian, Fedora et Arch Linux ; désactivée pour Budgie (déjà en paquets unitaires), « Aucun », Gentoo et Slackware. L'info-bulle et une ligne d'aide indiquent les paquets exacts.
+- **Non vérifié sur une vraie construction** : les noms de paquets sont ceux que je connais ; lancez « Analyser les paquets ». Un paquet de marque de la distribution peut rester s'il est exigé par une dépendance. Un GNOME vanille n'inclut pas de terminal.
+
 ## 2.0.23
 - **Fedora : « dumb http transport does not support shallow capabilities »**. Le choix de la branche (f43 en repli) fonctionnait, mais pagure.io répond en HTTP « dumb », qui n'accepte pas `git clone --depth 1`. Le clonage retente maintenant **sans `--depth`** (clone complet, plus long) quand le clone superficiel est refusé, après avoir supprimé le dossier partiel.
 - Testé avec un faux `git` qui refuse `--depth` ; non testé contre le vrai pagure.io.

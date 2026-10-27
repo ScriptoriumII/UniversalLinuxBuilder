@@ -120,7 +120,7 @@ def debian_script(workspace, release, packages, options):
         "--archive-areas " + shlex.quote(areas)
     ]
 
-    if options.get("light"):
+    if options.get("light") or options.get("vanilla"):
         config.append("--apt-recommends false")
 
     config += extra["config"]
