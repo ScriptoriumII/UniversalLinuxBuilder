@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.0.12
+- **Messages cohérents par distribution** : la confirmation « Actualiser les dépôts » citait Arch Linux pour tous les WSL. Elle décrit maintenant l'effet réel de la commande de la famille (Debian : index seulement ; Fedora : métadonnées ; Arch : mise à niveau complète ; Gentoo : synchronisation ; Slackware : liste). Le statut de vérification nomme la distribution et le WSL. Un test vérifie qu'aucun de ces textes ne cite une autre famille.
+- **Onglet Vérification** : bandeau de contexte (famille, version, gestionnaire, installateur, WSL) et quatre sous-onglets pleine hauteur : Outils, Paquets cibles, Résolution, Sortie native. Chaque titre rappelle la famille et le gestionnaire.
+- **Résolution lisible** : la sortie de la simulation (dnf5, apt, pacman, emerge) est lue et affichée en colonnes Paquet / Version / Dépôt / Taille / Rôle (demandé, dépendance, dépendance faible) ; la sortie brute reste disponible en police fixe.
+- **Origine des paquets précise** : Système de base, Bureau X, Audio X, Chargeur GRUB, Option X, Application choisie, Noyau (avant : tout était « Bureau / option / application »).
+- **Plus de résultats mélangés** : changer de famille efface les résultats de la précédente ; changer un réglage les marque « obsolète, à relancer ». Colonnes ajustées au contenu, dernière colonne toujours visible.
+- Correctif : le bouton « Créer l'ISO personnalisée » restait grisé pour Gentoo et Slackware.
+
 ## 2.0.11
 - **Gentoo et Slackware : ISO officielle puis remaster**, sans WSL dédié. Téléchargement depuis les miroirs officiels (reprise, vérification SHA256/SHA512, refus si l'empreinte diffère) ou import d'une ISO locale ; personnalisation avec xorriso dans n'importe quel WSL Debian/Fedora/Arch (`ulb/sources.py`, `ulb/remaster.py`, `ulb/ui_remaster.py`).
 - Gentoo : reprise de l'amorçage de l'ISO d'origine (`-boot_image any replay`) ; Slackware : arbre extrait puis commande officielle du README d'isolinux (BIOS + UEFI), séries retirables (`kde`, `y`…).

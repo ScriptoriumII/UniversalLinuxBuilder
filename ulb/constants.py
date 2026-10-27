@@ -3,7 +3,7 @@ import os
 import re
 
 
-VERSION = "2.0.11"
+VERSION = "2.0.12"
 
 FAMILIES = [
     "Debian",

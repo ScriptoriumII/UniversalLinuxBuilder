@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
-from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHeaderView, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtGui import QColor, QFontDatabase, QDesktopServices, QIcon, QPixmap
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from .constants import AUDIO, FEDORA_THIRD_PARTY, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
 from .theme import DARK
@@ -14,6 +14,7 @@ from .vm import INFO_MARKER, URL_MARKER, install_vm_tools, reset_vm_disk, run_vm
 from .project import export_project
 from .projects import normalize_project, read_project
 from .checklist import installer_checklist
+from .package_view import context_line, package_origins, parse_simulation, update_message
 from .precheck import live_essentials
 from .settings import load_settings, save_settings
 from .logos import logo
@@ -34,6 +35,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.resize(1400, 900)
 
         self.family_name = "Debian"
+        self.results_stale = False
 
         self.config = load_settings()
 
@@ -202,6 +204,10 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         widget.setHorizontalHeaderLabels(headers)
         widget.setAlternatingRowColors(True)
         widget.setShowGrid(False)
+        widget.horizontalHeader().setStretchLastSection(True)
+        widget.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
         widget.verticalHeader().hide()
         widget.verticalHeader().setDefaultSectionSize(29)
 
@@ -230,6 +236,17 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
                 )
 
         table.setSortingEnabled(True)
+
+        if table.property("auto"):
+            # colonnes ajustées au contenu, plafonnées pour que la
+            # dernière reste visible dans la fenêtre
+            table.resizeColumnsToContents()
+
+            for column in range(table.columnCount() - 1):
+                table.setColumnWidth(
+                    column,
+                    min(max(table.columnWidth(column) + 24, 110), 420)
+                )
 
     def selected(self, table):
         row = table.currentRow()
@@ -616,6 +633,13 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.analysis_ok = False
         self.tools_ok = False
 
+        if hasattr(self, "resolution_table") and (
+            self.resolution_table.rowCount()
+            or self.checks_table.rowCount()
+        ):
+            self.results_stale = True
+            self.refresh_verification_titles()
+
         if hasattr(self, "chain_table"):
             self.refresh_chain()
 
@@ -713,6 +737,8 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             text.setText(
                 family + " / " + release
             )
+
+        self.refresh_verification_titles()
 
         for name, button in self.cards.items():
             if name == family:
@@ -1041,39 +1067,69 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         row.addStretch()
         layout.addLayout(row)
 
+        self.context_label = QLabel()
+        self.context_label.setWordWrap(True)
+        self.context_label.setStyleSheet(
+            "color:#C9D8EA;background:#162233;border:1px solid #2C3A4D;"
+            "border-radius:6px;padding:6px 10px;"
+        )
+        layout.insertWidget(1, self.context_label)
+
         self.checks_table = self.table([
             "Composant",
             "Paquet",
             "État"
         ])
+        self.checks_table.setProperty("auto", True)
 
-        self.checks_table.setColumnWidth(0, 270)
-        self.checks_table.setColumnWidth(1, 270)
-
-        layout.addWidget(
-            self.checks_table,
-            2
-        )
+        self.checks_group = QGroupBox()
+        QVBoxLayout(self.checks_group).addWidget(self.checks_table)
 
         self.packages_table = self.table([
             "Paquet cible",
             "Origine"
         ])
+        self.packages_table.setProperty("auto", True)
 
-        self.packages_table.setColumnWidth(0, 360)
+        self.packages_group = QGroupBox()
+        QVBoxLayout(self.packages_group).addWidget(self.packages_table)
 
-        layout.addWidget(
-            self.packages_table,
-            2
+        self.resolution_table = self.table([
+            "Paquet",
+            "Version",
+            "Dépôt",
+            "Taille",
+            "Rôle"
+        ])
+        self.resolution_table.setProperty("auto", True)
+
+        self.resolution_group = QGroupBox()
+        QVBoxLayout(self.resolution_group).addWidget(
+            self.resolution_table
         )
 
         self.verification_log = QTextEdit()
         self.verification_log.setReadOnly(True)
-
-        layout.addWidget(
-            self.verification_log,
-            2
+        self.verification_log.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         )
+        self.verification_log.setLineWrapMode(
+            QTextEdit.LineWrapMode.NoWrap
+        )
+
+        self.log_group = QGroupBox()
+        QVBoxLayout(self.log_group).addWidget(self.verification_log)
+
+        # un sous-onglet par étape : chaque tableau garde toute la hauteur
+        self.verification_tabs = QTabWidget()
+        self.verification_tabs.addTab(self.checks_group, "Outils")
+        self.verification_tabs.addTab(self.packages_group, "Paquets cibles")
+        self.verification_tabs.addTab(self.resolution_group, "Résolution")
+        self.verification_tabs.addTab(self.log_group, "Sortie native")
+        layout.addWidget(self.verification_tabs, 1)
+
+        self.results_family = ""
+        self.refresh_verification_titles()
 
         self.next_button(layout, 4)
 
@@ -1891,11 +1947,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             )
         )
 
-        supported = family in (
-            "Debian",
-            "Arch Linux",
-            "Fedora"
-        )
+        supported = family in BUILD_FAMILIES + REMASTER_FAMILIES
 
         self.build_button.setEnabled(supported)
 
@@ -1919,6 +1971,10 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         self.invalidate()
         self.update_header()
+
+        if hasattr(self, "checks_table"):
+            self.clear_verification()
+
         self.refresh_target_packages()
 
         if self.inventory:
@@ -2622,15 +2678,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             self.warning("Famille Linux inconnue.")
             return
 
-        if not self.confirm(
-            "Actualiser les dépôts de "
-            + name
-            + " ("
-            + family
-            + ") ?\n\n"
-            "Attention : Arch Linux effectue "
-            "une mise à niveau complète."
-        ):
+        if not self.confirm(update_message(name, family)):
             return
 
         self.job(
@@ -2852,32 +2900,136 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         return sorted(packages)
 
+    def package_origin_map(self):
+        family = self.family_name
+        desktop = self.desktop.currentText()
+        audio = self.audio.currentText()
+        mode = self.boot_mode.currentText()
+
+        options = {
+            name: EXTRAS[family].get(name, [])
+            for name, checkbox in self.flags.items()
+            if checkbox.isChecked()
+        }
+
+        return package_origins(
+            TARGET_BASE[family],
+            DESKTOPS[family].get(desktop, []),
+            desktop,
+            AUDIO[family].get(audio, []),
+            audio,
+            GRUB_PACKAGES.get(family, {}).get(mode, [])
+            if self.boot.currentText() == "GRUB" else [],
+            mode,
+            options,
+            self.selected_packages,
+            (
+                ["linux", "linux-lts", "linux-hardened"]
+                if family == "Arch Linux" else []
+            )
+        )
+
     def refresh_target_packages(self):
         if not hasattr(self, "packages_table"):
             return
 
-        base = set(
-            TARGET_BASE[self.family_name]
-        )
-
-        rows = []
-
-        for package in self.target_packages():
-            origin = (
-                "Système de base"
-                if package in base
-                else "Bureau / option / application"
-            )
-
-            rows.append((
-                package,
-                origin
-            ))
+        origins = self.package_origin_map()
 
         self.fill(
             self.packages_table,
-            rows
+            [
+                (package, origins.get(package, "Autre"))
+                for package in self.target_packages()
+            ]
         )
+
+        self.refresh_verification_titles()
+
+    def verification_env(self):
+        return self.associations.get(self.family_name, "")
+
+    def refresh_verification_titles(self):
+        """Titres des blocs : toujours la famille et le gestionnaire,
+        et « obsolète » si le résultat date d'un autre réglage."""
+
+        if not hasattr(self, "checks_group"):
+            return
+
+        family = self.family_name
+        manager = MANAGERS[family]
+        env = self.verification_env()
+        label = family + " " + self.release.currentText()
+
+        self.context_label.setText(
+            context_line(
+                family,
+                self.release.currentText(),
+                manager,
+                INSTALLERS[family],
+                env
+            )
+        )
+
+        stale = " — obsolète, à relancer" if self.results_stale else ""
+
+        self.checks_group.setTitle(
+            "1. Outils de préparation dans le WSL « "
+            + (env or "non associé") + " »" + stale
+            if self.checks_table.rowCount() else
+            "1. Outils de préparation (non vérifiés)"
+        )
+
+        self.packages_group.setTitle(
+            "2. Paquets cibles — " + label + " (" + manager + ")"
+        )
+
+        self.resolution_group.setTitle(
+            "3. Résolution par " + manager + " (simulation)"
+            + (
+                " — " + self.results_family + stale
+                if self.resolution_table.rowCount()
+                and self.results_family else ""
+            )
+        )
+
+        self.log_group.setTitle(
+            "4. Sortie native de " + manager
+        )
+
+        counts = (
+            self.checks_table.rowCount(),
+            self.packages_table.rowCount(),
+            self.resolution_table.rowCount()
+        )
+
+        for index, (name, count) in enumerate((
+            ("Outils", counts[0]),
+            ("Paquets cibles", counts[1]),
+            ("Résolution", counts[2])
+        )):
+            self.verification_tabs.setTabText(
+                index,
+                name + (" (" + str(count) + ")" if count else "")
+            )
+
+        self.verification_tabs.setTabText(3, "Sortie " + manager)
+
+    def clear_verification(self):
+        """Évite de garder des résultats d'une autre distribution."""
+
+        for table in (
+            self.checks_table,
+            self.resolution_table
+        ):
+            table.setRowCount(0)
+
+        self.verification_log.clear()
+        self.verification_status.setText(
+            "Vérifications non effectuées"
+        )
+        self.results_family = ""
+        self.results_stale = False
+        self.refresh_verification_titles()
 
     # --------------------------------------------------------
     # VERIFICATION
@@ -2982,14 +3134,19 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             )
 
         self.tools_ok = not issues
+        self.verification_tabs.setCurrentIndex(0)
+        self.results_stale = False
+        self.refresh_verification_titles()
+
+        subject = target + " " + release + " (WSL « " + env + " »)"
 
         if self.tools_ok:
             self.verification_status.setText(
-                "Outils de préparation présents"
+                subject + " : outils de préparation présents"
             )
         else:
             self.verification_status.setText(
-                str(len(issues))
+                subject + " : " + str(len(issues))
                 + " problème(s) détecté(s)"
             )
 
@@ -3065,6 +3222,16 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         output, stderr, code = data
 
+        requested = set(self.target_packages())
+        rows = parse_simulation(family, output, requested)
+        self.fill(self.resolution_table, rows)
+        self.verification_tabs.setCurrentIndex(2 if rows else 3)
+        self.results_family = (
+            family + " " + self.release.currentText()
+        )
+        self.results_stale = False
+        self.refresh_verification_titles()
+
         # DNF5 --assumeno peut retourner un code non nul
         # lors d'un refus volontaire.
         # On ne transforme pas ce code en succès sans preuve.
@@ -3073,6 +3240,13 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         self.verification_log.setPlainText(
             "Famille : " + family
+            + " (" + MANAGERS[family] + ")"
+            + "\nPaquets lus dans la sortie : " + str(len(rows))
+            + (
+                ""
+                if rows
+                else " (format non reconnu : lis la sortie ci-dessous)"
+            )
             + "\nCode retour : " + str(code)
             + "\nStatut : "
             + (
