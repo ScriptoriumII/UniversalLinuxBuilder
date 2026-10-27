@@ -47,6 +47,11 @@ Ces deux familles n'ont **pas de construction** et n'ont pas besoin de leur prop
 Limites : les paquets ne sont pas recompilés ni ajoutés au système installé (ajoute des fichiers, des scripts ou
 retire des séries) ; le retrait de séries Slackware n'a pas été validé avec l'installateur `setup`.
 
+## Thème
+
+Sélecteur **Thème** en haut à droite : *Système* (suit Windows, y compris en cours d'exécution), *Clair* ou *Sombre*.
+Le choix est mémorisé.
+
 ## Parcours
 
 1. **Distribution** – famille et version.

@@ -5,9 +5,20 @@ from PySide6.QtSvg import QSvgRenderer
 from pathlib import Path
 
 from .constants import COLORS, LOGOS
+from .theme import PALETTES
+
+PALETTES_LIGHT_SLACKWARE = PALETTES["light"]["slackware"]
 
 
 ASSETS = Path(__file__).resolve().parent / "assets" / "logos"
+
+# Thème courant (« dark » ou « light ») : le logo Slackware, gris clair,
+# serait invisible sur fond clair.
+_mode = {"value": "dark"}
+
+
+def set_mode(mode):
+    _mode["value"] = "light" if mode == "light" else "dark"
 
 
 def logo(family, size=36):
@@ -22,7 +33,15 @@ def logo(family, size=36):
     filename = ASSETS / (LOGOS[family] + ".svg")
 
     if filename.exists():
-        renderer = QSvgRenderer(str(filename))
+        data = filename.read_bytes()
+
+        if _mode["value"] == "light":
+            data = data.replace(
+                b"#D0D7E2",
+                PALETTES_LIGHT_SLACKWARE.encode()
+            )
+
+        renderer = QSvgRenderer(data)
 
         if renderer.isValid():
             painter = QPainter(pixmap)

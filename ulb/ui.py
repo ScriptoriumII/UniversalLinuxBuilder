@@ -1,10 +1,10 @@
 from pathlib import Path
 import json
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHeaderView, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
-from PySide6.QtGui import QColor, QFontDatabase, QDesktopServices, QIcon, QPixmap
+from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication, QDesktopServices, QIcon, QPixmap
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from .constants import AUDIO, FEDORA_THIRD_PARTY, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
-from .theme import DARK
+from .theme import SETTING_LABELS, SETTING_VALUES, THEMES, palette, resolve_mode, stylesheet
 from .tasks import Task
 from .environments import add_fedora_third_party, add_flathub, install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
 from .builders import build_iso
@@ -17,7 +17,7 @@ from .checklist import installer_checklist
 from .package_view import context_line, package_origins, parse_simulation, update_message
 from .precheck import live_essentials
 from .settings import load_settings, save_settings
-from .logos import logo
+from .logos import logo, set_mode as set_logo_mode
 from .remaster import REMASTER_FAMILIES
 from .ui_remaster import RemasterMixin
 from .packages import parse_search, search_packages, simulate_packages
@@ -38,6 +38,12 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.results_stale = False
 
         self.config = load_settings()
+        self.theme_setting = self.config.get("theme", "system")
+
+        if self.theme_setting not in ("system", "light", "dark"):
+            self.theme_setting = "system"
+
+        self.theme_mode = "dark"
 
         saved = self.config.get("wsl_associations", {})
 
@@ -100,24 +106,34 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         titles = QVBoxLayout()
 
         title = QLabel("Universal Linux Builder")
-        title.setStyleSheet(
-            "font-size:20px;font-weight:600;color:#F0F5FC;"
-        )
+        self.role(title, "title")
 
         titles.addWidget(title)
 
         self.subtitle = QLabel()
-        self.subtitle.setStyleSheet(
-            "color:#8FA9C8;font-size:12px;"
-        )
+        self.role(self.subtitle, "subtitle")
         titles.addWidget(self.subtitle)
 
         header.addLayout(titles)
         header.addStretch()
 
         version = QLabel("v" + VERSION)
-        version.setStyleSheet("color:#7892AF;")
+        self.role(version, "muted")
         header.addWidget(version)
+
+        self.theme_choice = QComboBox()
+        self.theme_choice.addItems(THEMES)
+        self.theme_choice.setToolTip(
+            "Thème : suivre le système, clair ou sombre"
+        )
+        self.theme_choice.setCurrentText(
+            SETTING_LABELS.get(self.theme_setting, "Système")
+        )
+        self.theme_choice.currentTextChanged.connect(
+            self.theme_changed
+        )
+        header.addWidget(QLabel("Thème"))
+        header.addWidget(self.theme_choice)
 
         main.addLayout(header)
 
@@ -139,7 +155,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         footer = QHBoxLayout()
 
         self.status = QLabel("Prêt")
-        self.status.setStyleSheet("color:#7892AF;")
+        self.role(self.status, "muted")
         footer.addWidget(self.status, 1)
 
         self.progress = QProgressBar()
@@ -167,7 +183,11 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.log_timer.setInterval(150)
         self.log_timer.timeout.connect(self.flush_log)
 
-        self.setStyleSheet(DARK)
+        self.apply_theme()
+        hints = QGuiApplication.styleHints()
+
+        if hasattr(hints, "colorSchemeChanged"):
+            hints.colorSchemeChanged.connect(self.system_scheme_changed)
 
         self.change_family("Debian")
         self.profile_changed(self.profile.currentText())
@@ -188,6 +208,88 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.tabs.addTab(widget, name)
 
         return layout
+
+    # --------------------------------------------------------
+    # THÈME
+    # --------------------------------------------------------
+
+    def detect_scheme(self):
+        hints = QGuiApplication.styleHints()
+        scheme = hints.colorScheme() if hasattr(hints, "colorScheme") else None
+        app = QGuiApplication.instance()
+        lightness = (
+            app.palette().window().color().lightness() if app else None
+        )
+
+        return str(scheme) if scheme is not None else None, lightness
+
+    def theme_colors(self):
+        return palette(self.theme_mode)
+
+    def apply_theme(self):
+        scheme, lightness = self.detect_scheme()
+        self.theme_mode = resolve_mode(
+            self.theme_setting, scheme, lightness
+        )
+
+        set_logo_mode(self.theme_mode)
+        self.setStyleSheet(stylesheet(self.theme_mode))
+
+        # Qt 6.8+ : barres de titre et boîtes de dialogue natives
+        # alignées sur le choix ; « Unknown » = suivre le système.
+        hints = QGuiApplication.styleHints()
+
+        if hasattr(hints, "setColorScheme"):
+            try:
+                hints.setColorScheme(
+                    {
+                        "light": Qt.ColorScheme.Light,
+                        "dark": Qt.ColorScheme.Dark
+                    }.get(self.theme_setting, Qt.ColorScheme.Unknown)
+                )
+
+            except (AttributeError, TypeError):
+                pass
+
+        if not hasattr(self, "tabs") or not hasattr(self, "cards"):
+            return
+
+        self.update_header()
+        self.refresh_chain()
+
+        # logos : redessinés (le logo Slackware change selon le thème)
+        for family, button in self.cards.items():
+            button.setIcon(QIcon(logo(family, 32)))
+
+        for family, icon in self.mapping_icons.items():
+            icon.setPixmap(logo(family, 22))
+
+        self.apply_table_icons()
+
+        for family in self.indicators:
+            self.update_indicator(family)
+
+    def theme_changed(self, label):
+        self.theme_setting = SETTING_VALUES.get(label, "system")
+        self.config["theme"] = self.theme_setting
+
+        try:
+            save_settings(self.config)
+
+        except OSError:
+            pass
+
+        self.apply_theme()
+
+    def system_scheme_changed(self, *_):
+        if self.theme_setting == "system":
+            self.apply_theme()
+
+    def role(self, widget, name):
+        """Style par propriété (voir theme.py) : suit le thème choisi."""
+
+        widget.setProperty("role", name)
+        return widget
 
     def button(self, text, callback):
         widget = QPushButton(text)
@@ -672,15 +774,17 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
     def refresh_chain(self):
         rows = self.chain_rows()
 
+        tones = self.theme_colors()
+
         colors = {
-            "Inclus": "#7FCE9D",
-            "Présent": "#7FCE9D",
-            "Automatique": "#7FCE9D",
-            "Absent": "#E8776F",
-            "Non implémenté": "#E8776F",
-            "À valider": "#E6AD5D",
-            "À configurer": "#E6AD5D",
-            "Non testé": "#E6AD5D"
+            "Inclus": tones["ok"],
+            "Présent": tones["ok"],
+            "Automatique": tones["ok"],
+            "Absent": tones["bad"],
+            "Non implémenté": tones["bad"],
+            "À valider": tones["warn"],
+            "À configurer": tones["warn"],
+            "Non testé": tones["warn"]
         }
 
         self.chain_table.setRowCount(len(rows))
@@ -691,7 +795,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
                 if j == 1:
                     item.setForeground(
-                        QColor(colors.get(value, "#DCE4EF"))
+                        QColor(colors.get(value, tones["default"]))
                     )
 
                 self.chain_table.setItem(i, j, item)
@@ -703,9 +807,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         image.setFixedSize(26, 26)
 
         text = QLabel()
-        text.setStyleSheet(
-            "font-size:13px;font-weight:600;color:#C9D8EA;"
-        )
+        self.role(text, "banner")
 
         row.addWidget(image)
         row.addWidget(text)
@@ -741,30 +843,10 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.refresh_verification_titles()
 
         for name, button in self.cards.items():
-            if name == family:
-                button.setStyleSheet(
-                    "QPushButton{"
-                    "background:#20354C;"
-                    "border:1px solid #5796D5;"
-                    "border-radius:7px;"
-                    "padding:8px;"
-                    "font-weight:600;"
-                    "color:white;"
-                    "}"
-                )
-            else:
-                button.setStyleSheet(
-                    "QPushButton{"
-                    "background:#192431;"
-                    "border:1px solid #2C3A4D;"
-                    "border-radius:7px;"
-                    "padding:8px;"
-                    "color:#B8C8DB;"
-                    "}"
-                    "QPushButton:hover{"
-                    "background:#24364B;"
-                    "}"
-                )
+            button.setProperty("role", "card")
+            button.setProperty("selected", name == family)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def next_button(self, layout, index):
         row = QHBoxLayout()
@@ -788,9 +870,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         layout = self.page("Distribution")
 
         title = QLabel("Choisir une distribution")
-        title.setStyleSheet(
-            "font-size:16px;font-weight:600;"
-        )
+        self.role(title, "heading")
         layout.addWidget(title)
 
         cards = QHBoxLayout()
@@ -845,9 +925,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         self.distribution_note = QLabel()
         self.distribution_note.setWordWrap(True)
-        self.distribution_note.setStyleSheet(
-            "color:#8FA4BF;"
-        )
+        self.role(self.distribution_note, "note")
 
         layout.addWidget(self.distribution_note)
 
@@ -1069,10 +1147,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         self.context_label = QLabel()
         self.context_label.setWordWrap(True)
-        self.context_label.setStyleSheet(
-            "color:#C9D8EA;background:#162233;border:1px solid #2C3A4D;"
-            "border-radius:6px;padding:6px 10px;"
-        )
+        self.role(self.context_label, "context")
         layout.insertWidget(1, self.context_label)
 
         self.checks_table = self.table([
@@ -1153,7 +1228,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             "sur le disque installé pour vérifier GRUB."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8FA4BF;")
+        self.role(note, "note")
         layout.addWidget(note)
 
         group = QGroupBox("Machine virtuelle")
@@ -1466,9 +1541,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         )
 
         self.iso_note.setWordWrap(True)
-        self.iso_note.setStyleSheet(
-            "color:#8FA4BF;"
-        )
+        self.role(self.iso_note, "note")
 
         layout.addWidget(self.iso_note)
 
@@ -1503,7 +1576,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         self.profile_note = QLabel()
         self.profile_note.setWordWrap(True)
-        self.profile_note.setStyleSheet("color:#8FA4BF;")
+        self.role(self.profile_note, "note")
 
         profile_row = QHBoxLayout()
         profile_row.addWidget(self.profile)
@@ -1592,9 +1665,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             Qt.AlignmentFlag.AlignCenter
         )
         self.boot_preview.setMinimumWidth(320)
-        self.boot_preview.setStyleSheet(
-            "border:1px solid #2C3A4D;color:#7892AF;"
-        )
+        self.role(self.boot_preview, "preview")
         split.addWidget(self.boot_preview, 2)
 
         layout.addLayout(split, 1)
@@ -1607,9 +1678,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         layout = self.page("WSL2")
 
         title = QLabel("Environnements WSL2")
-        title.setStyleSheet(
-            "font-size:16px;font-weight:600;"
-        )
+        self.role(title, "heading")
         layout.addWidget(title)
 
         self.wsl_sections = QTabWidget()
@@ -1801,7 +1870,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         )
 
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8FA4BF;")
+        self.role(note, "note")
 
         associations_layout.addWidget(note)
 
@@ -2197,7 +2266,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         if item is None or item["family"] != family:
             message = "○ Non associé"
-            color = "#95A4B6"
+            state = "off"
 
         else:
             desired = (
@@ -2216,17 +2285,18 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
             if mismatch:
                 message = "● À vérifier"
-                color = "#E6AD5D"
+                state = "warn"
 
             else:
                 message = "● Connecté"
-                color = "#7FCE9D"
+                state = "ok"
 
         self.indicators[family].setText(message)
 
-        self.indicators[family].setStyleSheet(
-            "color:" + color + ";"
-        )
+        indicator = self.indicators[family]
+        indicator.setProperty("state", state)
+        indicator.style().unpolish(indicator)
+        indicator.style().polish(indicator)
 
     def mapping_changed(self, family, name):
         chosen = (

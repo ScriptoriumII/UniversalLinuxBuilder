@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.0.13
+- **Thèmes** : Système, Clair, Sombre (sélecteur « Thème » en haut à droite, choix mémorisé). « Système » suit le réglage de Windows et change à chaud quand il change.
+- Toutes les couleurs viennent de `ulb/theme.py` (palettes sombre et claire, contrastes vérifiés par un test) ; les styles en dur ont été remplacés par des rôles, y compris les cartes de distribution, les états colorés et les indicateurs WSL.
+- Le logo Slackware (gris clair) est assombri sur le thème clair pour rester visible.
+- Qt 6.8 ou plus : les barres de titre et boîtes de dialogue natives suivent aussi le choix.
+
 ## 2.0.12
 - **Messages cohérents par distribution** : la confirmation « Actualiser les dépôts » citait Arch Linux pour tous les WSL. Elle décrit maintenant l'effet réel de la commande de la famille (Debian : index seulement ; Fedora : métadonnées ; Arch : mise à niveau complète ; Gentoo : synchronisation ; Slackware : liste). Le statut de vérification nomme la distribution et le WSL. Un test vérifie qu'aucun de ces textes ne cite une autre famille.
 - **Onglet Vérification** : bandeau de contexte (famille, version, gestionnaire, installateur, WSL) et quatre sous-onglets pleine hauteur : Outils, Paquets cibles, Résolution, Sortie native. Chaque titre rappelle la famille et le gestionnaire.
