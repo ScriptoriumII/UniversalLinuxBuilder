@@ -217,3 +217,19 @@ def test_fedora_clone_retries_without_depth_on_dumb_http(tmp_path):
     result = run_clone(tmp_path, "43", ["f43"])
     assert "Clone superficiel refusé" not in result.stdout
     assert "--depth 1 --branch f43" in result.stdout
+
+
+@posix_only
+def test_build_uses_custom_iso_name_without_overwriting(
+    fake_wsl, tmp_path, workspaces
+):
+    destination = tmp_path / "out"
+    destination.mkdir()
+    options = {"cleanup": True, "iso_name": "ma distro"}
+
+    for expected in ("ma distro.iso", "ma distro-2.iso"):
+        files, _ = build_iso(
+            "Debian", "Debian", "trixie", ["calamares"],
+            str(destination), "Xfce", dict(options), Control()
+        )
+        assert Path(files[0]["file"]).name == expected

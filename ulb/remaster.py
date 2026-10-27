@@ -251,6 +251,7 @@ def remaster_iso(
 
     from .builders import append_sums, copy_from_wsl, free_name
     from .constants import VERSION
+    from .output import iso_file_name
     from .environments import detect_family
     from .sources import import_iso
     from .vm import windows_to_wsl_path
@@ -375,7 +376,10 @@ def remaster_iso(
 
         target = free_name(
             destination,
-            "ULB_" + family + "_" + stamp + ".iso"
+            iso_file_name(
+                options.get("iso_name"),
+                "ULB_" + family + "_" + stamp + ".iso"
+            )
         )
         control.log("== Copie vers Windows : " + target.name + " ==")
         sha256 = copy_from_wsl(env, out, target, size, control)

@@ -322,11 +322,7 @@ class RemasterMixin:
             self.warning(str(exc))
             return
 
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "Choisir le dossier de destination "
-            "(il peut contenir d'autres fichiers)"
-        )
+        folder = self.output_folder()
 
         if not folder:
             return
@@ -352,6 +348,7 @@ class RemasterMixin:
                 source,
                 folder,
                 {
+                    "iso_name": self.out_name.text().strip(),
                     "overlay": self.remaster_overlay.text().strip(),
                     "remove": remove,
                     "drop_sources": self.remaster_sources_option.isChecked()

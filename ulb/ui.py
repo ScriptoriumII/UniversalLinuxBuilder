@@ -22,6 +22,7 @@ from .catalog import (
     INTERNET, INTERNET_FAMILIES, online_label, refresh_online, search_online
 )
 from .remaster import REMASTER_FAMILIES
+from .output import check_folder, clean_iso_name
 from .ui_advanced import AdvancedMixin
 from .vanilla import desktop_packages, vanilla_note, vanilla_supported
 from .ui_remaster import RemasterMixin
@@ -1577,6 +1578,102 @@ class UniversalLinuxBuilder(
             )
         )
 
+    def build_output_group(self, layout):
+        box = QGroupBox("Destination de l'ISO")
+        form = QFormLayout(box)
+
+        saved = self.config.get("output", {})
+        saved = saved if isinstance(saved, dict) else {}
+
+        self.out_folder = QLineEdit(str(saved.get("folder", "")))
+        self.out_folder.setPlaceholderText(
+            "vide = demander le dossier à chaque construction"
+        )
+        browse = QPushButton("Parcourir…")
+        browse.clicked.connect(self.choose_output_folder)
+
+        row = QHBoxLayout()
+        row.addWidget(self.out_folder, 1)
+        row.addWidget(browse)
+        form.addRow("Dossier", row)
+
+        self.out_name = QLineEdit(str(saved.get("name", "")))
+        self.out_name.setPlaceholderText(
+            "vide = nom automatique ULB_<distribution>_<version>_<date>.iso"
+        )
+        self.out_name.setToolTip(
+            "L'extension .iso est ajoutée si besoin. Un fichier existant "
+            "n'est jamais écrasé : -2, -3… est ajouté au nom."
+        )
+        form.addRow("Nom du fichier", self.out_name)
+
+        self.out_preview = QLabel()
+        self.out_preview.setWordWrap(True)
+        self.role(self.out_preview, "muted")
+        form.addRow(self.out_preview)
+
+        self.out_folder.textChanged.connect(self.output_changed)
+        self.out_name.textChanged.connect(self.output_changed)
+        self.refresh_output()
+        layout.addWidget(box)
+
+    def choose_output_folder(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Choisir le dossier de destination des ISO",
+            self.out_folder.text().strip()
+        )
+
+        if folder:
+            self.out_folder.setText(folder)
+
+    def refresh_output(self):
+        name = clean_iso_name(self.out_name.text())
+        folder = self.out_folder.text().strip()
+        problem = check_folder(folder) if folder else ""
+
+        self.out_preview.setText(
+            problem
+            if problem
+            else "Fichier : "
+            + (name or "nom automatique")
+            + (" — dans " + folder if folder else " — dossier demandé au lancement")
+        )
+
+    def output_changed(self, *_):
+        self.refresh_output()
+
+        self.config["output"] = {
+            "folder": self.out_folder.text().strip(),
+            "name": self.out_name.text().strip()
+        }
+
+        try:
+            save_settings(self.config)
+
+        except OSError:
+            pass
+
+    def output_folder(self):
+        """Dossier mémorisé s'il existe, sinon boîte de dialogue ; '' = annulé."""
+
+        folder = self.out_folder.text().strip()
+
+        if folder:
+            problem = check_folder(folder)
+
+            if not problem:
+                return folder
+
+            self.warning(problem)
+            return ""
+
+        return QFileDialog.getExistingDirectory(
+            self,
+            "Choisir le dossier de destination "
+            "(il peut contenir d'autres fichiers)"
+        )
+
     def make_iso(self):
         layout = self.page("ISO")
         self.banner(layout)
@@ -1597,6 +1694,7 @@ class UniversalLinuxBuilder(
 
         layout.addWidget(self.iso_note)
 
+        self.build_output_group(layout)
         self.build_remaster_group(layout)
 
         layout.addWidget(
@@ -3760,10 +3858,7 @@ class UniversalLinuxBuilder(
             self.tabs.setCurrentIndex(self.tab_index("Système"))
             return
 
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "Choisir le dossier de destination (il peut contenir d'autres fichiers)"
-        )
+        folder = self.output_folder()
 
         if not folder:
             return
@@ -3839,6 +3934,7 @@ class UniversalLinuxBuilder(
                 self.desktop.currentText(),
                 dict(
                     self.build_options(),
+                    iso_name=self.out_name.text().strip(),
                     password=(
                         self.advanced_password()
                         if self.advanced_data()["enabled"]

@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.0.25
+- **Destination et nom de l'ISO au choix** (onglet ISO, groupe « Destination de l'ISO »). Un dossier (bouton Parcourir) et un nom de fichier, mémorisés d'un lancement à l'autre. Dossier vide : la boîte de dialogue habituelle s'ouvre à chaque construction. Nom vide : nom automatique `ULB_<distribution>_<version>_<date>.iso`.
+- Valable pour Debian, Fedora, Arch Linux et pour le remaster Gentoo/Slackware. Le nom est nettoyé (caractères interdits sous Windows remplacés par `_`, noms réservés comme CON évités, `.iso` ajouté) ; si plusieurs ISO sont produites, `_1`, `_2`… sont ajoutés ; un fichier existant n'est **jamais écrasé** (`-2`, `-3`…). Un dossier mémorisé qui n'existe plus provoque un avertissement.
+- Limite : la destination est un dossier Windows ; le renommage ne change pas le volume interne de l'ISO.
+
 ## 2.0.24
 - **Option « Bureau vanille »** (onglet Système, à droite du choix du bureau). Elle remplace le méta-paquet habituel (`gnome-core`, `kde-plasma-desktop`, `xfce4`…) par la session, le gestionnaire de connexion, le gestionnaire de fichiers et les réglages seulement, sans applications ni réglages ajoutés par la distribution. Pour Debian, `--apt-recommends false` est aussi appliqué.
 - Disponible pour GNOME, KDE Plasma et Xfce sur Debian, Fedora et Arch Linux ; désactivée pour Budgie (déjà en paquets unitaires), « Aucun », Gentoo et Slackware. L'info-bulle et une ligne d'aide indiquent les paquets exacts.

@@ -19,6 +19,7 @@ from .constants import (
 )
 from .advanced import arch_extras, debian_extras, fedora_extras
 from .environments import verify_tools
+from .output import iso_file_name
 from .precheck import debian_postcheck
 from .wsl import Control, decode, execute, wsl_stream
 
@@ -673,14 +674,19 @@ def build_iso(
             # et jamais d'écrasement d'un fichier existant
             target = free_name(
                 destination,
-                "ULB_"
-                + family.replace(" ", "_")
-                + "_"
-                + release
-                + "_"
-                + stamp
-                + ("_" + str(index) if len(sources) > 1 else "")
-                + ".iso"
+                iso_file_name(
+                    options.get("iso_name"),
+                    "ULB_"
+                    + family.replace(" ", "_")
+                    + "_"
+                    + release
+                    + "_"
+                    + stamp
+                    + ("_" + str(index) if len(sources) > 1 else "")
+                    + ".iso",
+                    index,
+                    len(sources)
+                )
             )
 
             control.log(

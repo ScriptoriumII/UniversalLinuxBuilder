@@ -489,3 +489,24 @@ def test_vanilla_desktop_option(fake_wsl, monkeypatch):
     assert desktop_packages("Debian", "Budgie", True) == (
         desktop_packages("Debian", "Budgie")
     )
+
+
+def test_iso_destination_and_name(fake_wsl, monkeypatch, tmp_path):
+    app, window = make_window(fake_wsl, monkeypatch)
+
+    window.out_folder.setText(str(tmp_path))
+    window.out_name.setText("ma-distro")
+
+    assert window.output_folder() == str(tmp_path)
+    assert "ma-distro.iso" in window.out_preview.text()
+    assert window.config["output"]["name"] == "ma-distro"
+
+    window.out_folder.setText(str(tmp_path / "absent"))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    assert window.output_folder() == ""
+
+    window.out_folder.setText("")
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", lambda *a, **k: str(tmp_path)
+    )
+    assert window.output_folder() == str(tmp_path)
