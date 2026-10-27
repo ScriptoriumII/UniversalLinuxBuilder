@@ -18,6 +18,7 @@ from .package_view import context_line, package_origins, parse_simulation, updat
 from .precheck import live_essentials
 from .settings import load_settings, save_settings
 from .logos import logo, set_mode as set_logo_mode
+from .catalog import INTERNET, INTERNET_FAMILIES, search_online
 from .remaster import REMASTER_FAMILIES
 from .ui_remaster import RemasterMixin
 from .packages import parse_search, search_packages, simulate_packages
@@ -2210,6 +2211,9 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             valid = (
                 item is not None
                 and item["family"] == family
+            ) or (
+                saved == INTERNET
+                and family in INTERNET_FAMILIES
             )
 
             if not valid:
@@ -2234,6 +2238,10 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
                     self.manual_associations.discard(family)
 
+                    # Gentoo / Slackware sans WSL : catalogue Internet.
+                    if not choice and family in INTERNET_FAMILIES:
+                        choice = INTERNET
+
                 if choice != saved:
                     self.associations[family] = choice
                     changed = True
@@ -2243,13 +2251,17 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             combo.blockSignals(True)
             combo.clear()
 
+            extra = (
+                [INTERNET] if family in INTERNET_FAMILIES else []
+            )
+
             combo.addItems(
-                ["— Non associé —"] + names
+                ["— Non associé —"] + extra + names
             )
 
             chosen = self.associations.get(family, "")
 
-            if chosen in names:
+            if chosen in names or chosen in extra:
                 combo.setCurrentText(chosen)
 
             combo.blockSignals(False)
@@ -2264,7 +2276,11 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         name = self.associations.get(family, "")
         item = self.environment_item(name)
 
-        if item is None or item["family"] != family:
+        if name == INTERNET and family in INTERNET_FAMILIES:
+            message = "● Internet"
+            state = "ok"
+
+        elif item is None or item["family"] != family:
             message = "○ Non associé"
             state = "off"
 
@@ -2363,6 +2379,15 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         )
 
         item = self.environment_item(name)
+
+        if name == INTERNET and self.family_name in INTERNET_FAMILIES:
+            self.warning(
+                "Mode « Dépôt internet » : seule la recherche de "
+                "paquets est disponible. Les outils et l'analyse des "
+                "dépendances demandent un WSL " + self.family_name
+                + " (onglet WSL2)."
+            )
+            return ""
 
         if (
             item is None
@@ -2839,6 +2864,10 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             self.invalidate()
 
     def search_applications(self):
+        if self.uses_internet_catalog():
+            self.search_internet()
+            return
+
         env = self.project_environment()
 
         if not env:
@@ -2871,6 +2900,33 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
                 )
         )
 
+    def uses_internet_catalog(self):
+        return (
+            self.family_name in INTERNET_FAMILIES
+            and self.associations.get(self.family_name, "") == INTERNET
+        )
+
+    def search_internet(self):
+        query = self.search_text.text().strip()
+
+        if not query or len(query) > 70:
+            self.warning("Recherche invalide.")
+            return
+
+        family = self.family_name
+        revision = self.revision
+
+        self.apps_log.setPlainText(
+            "Recherche sur Internet (" + family + ")..."
+        )
+
+        self.job(
+            search_online,
+            (family, self.release.currentText(), query),
+            lambda data, error:
+                self.search_done(family, revision, data, error)
+        )
+
     def search_done(
         self,
         family,
@@ -2887,9 +2943,9 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         output, stderr, code = data
 
-        rows = parse_search(
-            family,
-            output
+        rows = (
+            output if isinstance(output, list)
+            else parse_search(family, output)
         )
 
         self.fill(

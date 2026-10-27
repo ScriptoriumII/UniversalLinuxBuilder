@@ -47,6 +47,10 @@ Ces deux familles n'ont **pas de construction** et n'ont pas besoin de leur prop
 Limites : les paquets ne sont pas recompilés ni ajoutés au système installé (ajoute des fichiers, des scripts ou
 retire des séries) ; le retrait de séries Slackware n'a pas été validé avec l'installateur `setup`.
 
+Pour **chercher des applications** (onglet Applications) sans WSL Gentoo/Slackware, l'association
+« Dépôt internet (sans WSL) » lit le catalogue en ligne : `PACKAGES.TXT` du miroir Slackware, Repology pour Gentoo.
+L'analyse des dépendances reste réservée à un vrai WSL.
+
 ## Thème
 
 Sélecteur **Thème** en haut à droite : *Système* (suit Windows, y compris en cours d'exécution), *Clair* ou *Sombre*.

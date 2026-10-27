@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.0.17
+- **Gentoo et Slackware : association « Dépôt internet (sans WSL) »** (onglet WSL2, Associations). Choisie automatiquement quand aucun WSL de la famille n'existe ; un WSL Gentoo/Slackware reste prioritaire s'il est détecté. Indicateur « ● Internet ».
+- **Recherche d'applications sans WSL** : Slackware lit `PACKAGES.TXT` du miroir officiel (version 15.0 ou current choisie dans l'onglet Distribution) ; Gentoo interroge l'API Repology (dépôt `gentoo`). Résultats : nom, version, description.
+- En mode Internet, l'analyse des dépendances et la vérification des outils restent indisponibles (elles demandent le gestionnaire de paquets réel) ; un message l'explique.
+- Non vérifié : les adresses et formats n'ont pas pu être testés en réel (réseau restreint ici) ; les analyseurs sont testés sur des échantillons conformes à la documentation.
+
 ## 2.0.16
 - **Onglet Système** : la case « Dépôts tiers non libres (Fedora) » n'apparaît plus que si la famille Fedora est choisie (elle était seulement grisée avant). Elle n'est de toute façon jamais appliquée aux autres familles.
 - Le bouton « Dépôts tiers Fedora » de l'onglet WSL2 reste disponible : il agit sur un WSL Fedora, quelle que soit la famille de l'ISO.

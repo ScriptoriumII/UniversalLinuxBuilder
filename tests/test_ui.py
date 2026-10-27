@@ -252,3 +252,41 @@ def test_fedora_third_party_option_only_for_fedora(fake_wsl, monkeypatch):
     assert not box.isHidden()
     window.change_family("Debian")
     assert box.isHidden()
+
+
+@posix_only
+def test_internet_catalog_association(fake_wsl, monkeypatch):
+    from ulb import ui as ui_module
+    from ulb.catalog import INTERNET
+
+    monkeypatch.setattr(
+        ui_module, "search_online",
+        lambda family, release, query: (
+            [("vlc", "3.0", "player")], "", 0
+        )
+    )
+
+    app, window = make_window(fake_wsl, monkeypatch)
+
+    for family in ("Gentoo", "Slackware"):
+        # Pas de WSL de cette famille : le catalogue Internet est choisi.
+        assert window.associations[family] == INTERNET
+        assert INTERNET in [
+            window.mapping_boxes[family].itemText(i)
+            for i in range(window.mapping_boxes[family].count())
+        ]
+        assert "Internet" in window.indicators[family].text()
+
+    for family in ("Debian", "Fedora", "Arch Linux"):
+        assert INTERNET not in [
+            window.mapping_boxes[family].itemText(i)
+            for i in range(window.mapping_boxes[family].count())
+        ]
+
+    window.change_family("Slackware")
+    window.search_text.setText("vlc")
+    window.search_applications()
+    pump(app, lambda: window.worker is None)
+
+    assert window.search_results.rowCount() == 1
+    assert window.search_results.item(0, 0).text() == "vlc"
