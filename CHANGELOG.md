@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.0.28
+- **Onglet ISO : suppression de « Tester le démarrage (QEMU) »** (bouton, mode UEFI/BIOS, délai, aperçu de capture), redondant avec l'onglet Virtualisation. Le journal de construction occupe maintenant toute la largeur. La note de l'onglet renvoie à Virtualisation.
+- Le module `vmtest.py` (test par capture d'écran) reste dans le code mais n'est plus appelé par l'interface ; la rubrique `boot_smoke_test` des projets enregistrés reste vide (format inchangé, anciens projets lisibles).
+
 ## 2.0.27
 - **Cases à cocher invisibles** (Wi-Fi, Bluetooth, Impression, Firmware, Flathub, Dépôts tiers, Bureau vanille) : sous Windows, une fois la feuille de style appliquée, la case n'avait ni cadre ni coche tant qu'elle n'était pas dans un cadre (seul « Avancé » s'affichait bien). Les cases ont maintenant un indicateur explicite : cadre aux couleurs du thème, remplissage accent et coche blanche quand elles sont cochées, état grisé distinct. Thème clair et sombre ; rendu vérifié en capture hors écran, pas sur votre Windows.
 

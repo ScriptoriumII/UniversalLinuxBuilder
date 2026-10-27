@@ -1,7 +1,7 @@
 from pathlib import Path
 import json
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHeaderView, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QScrollArea, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
-from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication, QDesktopServices, QIcon, QPixmap
+from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication, QDesktopServices, QIcon
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from .constants import AUDIO, FEDORA_THIRD_PARTY, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
 from .theme import SETTING_LABELS, SETTING_VALUES, THEMES, palette, resolve_mode, stylesheet
@@ -9,7 +9,6 @@ from .tasks import Task
 from .environments import install_distribution, best_match, check_tools, detect_all, install_tools, manager_report, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
 from .builders import build_iso
 from .progress import BuildProgress, describe
-from .vmtest import boot_test
 from .vm import INFO_MARKER, URL_MARKER, install_vm_tools, reset_vm_disk, run_vm, stop_vm
 from .project import export_project
 from .projects import normalize_project, read_project
@@ -1685,7 +1684,7 @@ class UniversalLinuxBuilder(
         self.iso_note = QLabel(
             "La vérification d'une signature ISO9660 "
             "ne constitue pas un test de démarrage.\n"
-            "Une ISO doit être testée en machine virtuelle, "
+            "Une ISO doit être testée dans l'onglet Virtualisation, "
             "puis avec Ventoy et son installateur."
         )
 
@@ -1778,47 +1777,9 @@ class UniversalLinuxBuilder(
 
         layout.addLayout(row)
 
-        vm_row = QHBoxLayout()
-
-        vm_row.addWidget(
-            self.button(
-                "Tester le démarrage (QEMU)",
-                self.test_boot
-            )
-        )
-
-        self.smoke_mode = self.combo(["UEFI", "BIOS"])
-        vm_row.addWidget(self.smoke_mode)
-
-        self.smoke_wait = self.combo(["60 s", "120 s", "240 s"])
-        self.smoke_wait.setCurrentText("120 s")
-        vm_row.addWidget(self.smoke_wait)
-
-        vm_row.addWidget(
-            QLabel(
-                "Capture d'écran après le délai ; "
-                "ne valide pas l'installateur."
-            )
-        )
-
-        vm_row.addStretch()
-        layout.addLayout(vm_row)
-
-        split = QHBoxLayout()
-
         self.iso_log = QTextEdit()
         self.iso_log.setReadOnly(True)
-        split.addWidget(self.iso_log, 3)
-
-        self.boot_preview = QLabel("Aucune capture")
-        self.boot_preview.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-        self.boot_preview.setMinimumWidth(320)
-        self.role(self.boot_preview, "preview")
-        split.addWidget(self.boot_preview, 2)
-
-        layout.addLayout(split, 1)
+        layout.addWidget(self.iso_log, 1)
 
     # --------------------------------------------------------
     # WSL2
@@ -3686,106 +3647,6 @@ class UniversalLinuxBuilder(
         self.profile_note_refresh()
 
         self.invalidate()
-
-    def test_boot(self):
-        family = self.family_name
-
-        if family not in BUILD_FAMILIES:
-            self.warning(
-                "Test de démarrage disponible pour les familles "
-                "dont l'ISO peut être construite."
-            )
-            return
-
-        env = self.project_environment()
-
-        if not env:
-            return
-
-        filename, _ = QFileDialog.getOpenFileName(
-            self,
-            "Choisir l'ISO à tester",
-            self.last_iso,
-            "Images ISO (*.iso)"
-        )
-
-        if not filename:
-            return
-
-        mode = self.smoke_mode.currentText()
-        wait = int(self.smoke_wait.currentText().split()[0])
-
-        if not self.confirm(
-            "Démarrer l'ISO dans QEMU (" + mode + ") et "
-            "capturer l'écran après " + str(wait) + " s ?\n\n"
-            "QEMU et OVMF doivent être installés dans "
-            + env
-            + ". Sans accélération KVM, l'émulation est lente "
-            "(augmente le délai)."
-        ):
-            return
-
-        self.boot_preview.setPixmap(QPixmap())
-        self.boot_preview.setText("Test en cours…")
-
-        self.job(
-            boot_test,
-            (
-                env,
-                family,
-                filename,
-                mode,
-                wait,
-                str(Path(filename).parent)
-            ),
-            self.boot_done,
-            self.iso_log
-        )
-
-    def boot_done(self, data, error):
-        self.boot_preview.setText("Aucune capture")
-
-        if error:
-            self.iso_log.insertPlainText(
-                "\n===== TEST DE DÉMARRAGE IMPOSSIBLE =====\n"
-                + error
-                + "\n"
-            )
-            self.warning(
-                "Test de démarrage impossible.\n\n" + error[:600]
-            )
-            return
-
-        pixmap = QPixmap(data["screenshot"])
-
-        if not pixmap.isNull():
-            self.boot_preview.setPixmap(
-                pixmap.scaled(
-                    self.boot_preview.width() - 8,
-                    260,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-            )
-
-        self.boot_smoke[data["mode"]] = not data["blank"]
-
-        self.iso_log.insertPlainText(
-            "\n===== TEST DE DÉMARRAGE ("
-            + data["mode"]
-            + ") =====\n"
-            + data["verdict"]
-            + "\nCapture : " + data["screenshot"]
-            + "\nPixels allumés : "
-            + str(round(data["lit_ratio"] * 100, 1))
-            + " %, couleurs : " + str(data["colors"])
-            + "\n\nInstallateur et Ventoy : NON TESTÉS\n"
-            + (
-                "\nSortie série :\n" + data["serial_tail"] + "\n"
-                if data["serial_tail"].strip()
-                else ""
-            )
-        )
 
     def build_options(self):
         return {
