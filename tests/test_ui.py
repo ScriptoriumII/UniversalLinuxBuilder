@@ -510,3 +510,15 @@ def test_iso_destination_and_name(fake_wsl, monkeypatch, tmp_path):
         QFileDialog, "getExistingDirectory", lambda *a, **k: str(tmp_path)
     )
     assert window.output_folder() == str(tmp_path)
+
+
+def test_checkbox_indicator_is_styled():
+    from ulb.theme import stylesheet
+
+    for mode in ("light", "dark"):
+        sheet = stylesheet(mode)
+        assert "QCheckBox::indicator" in sheet
+        assert "$check_icon" not in sheet
+
+        icon = sheet.split("image: url(")[1].split(")")[0]
+        assert Path(icon).is_file()

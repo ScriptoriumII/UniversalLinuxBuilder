@@ -116,7 +116,30 @@ QPushButton:disabled {
     background: $disabled_bg;
 }
 
-QCheckBox { background: transparent; }
+QCheckBox { background: transparent; spacing: 8px; }
+
+QCheckBox::indicator, QGroupBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid $button_hover_border;
+    border-radius: 3px;
+    background: $panel;
+}
+
+QCheckBox::indicator:hover, QGroupBox::indicator:hover {
+    border-color: $accent;
+}
+
+QCheckBox::indicator:checked, QGroupBox::indicator:checked {
+    background: $accent;
+    border-color: $accent;
+    image: url($check_icon);
+}
+
+QCheckBox::indicator:disabled, QGroupBox::indicator:disabled {
+    background: $disabled_bg;
+    border-color: $border;
+}
 
 QTabWidget::pane {
     border: 1px solid $pane;
@@ -214,8 +237,43 @@ def palette(mode):
     return PALETTES["light" if mode == "light" else "dark"]
 
 
+def check_icon(mode):
+    """Coche blanche (PNG) pour les cases cochées ; créée au besoin.
+
+    Sans indicateur explicite, certaines cases (Windows) n'affichent ni
+    cadre ni coche une fois la feuille de style appliquée."""
+
+    import tempfile
+    from pathlib import Path
+
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QColor, QImage, QPainter, QPen
+
+    path = Path(tempfile.gettempdir()) / ("ulb-check-" + mode + ".png")
+
+    if not path.exists():
+        image = QImage(16, 16, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = QColor("#FFFFFF")
+        pen = QPen(color, 2.2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawPolyline([
+            QPointF(3.8, 8.4), QPointF(6.8, 11.4), QPointF(12.3, 4.8)
+        ])
+        painter.end()
+        image.save(str(path))
+
+    return path.as_posix()
+
+
 def stylesheet(mode):
-    return TEMPLATE.substitute(palette(mode))
+    mode = "light" if mode == "light" else "dark"
+    values = dict(palette(mode), check_icon=check_icon(mode))
+    return TEMPLATE.substitute(values)
 
 
 # Compatibilité : ancien nom de la feuille sombre.

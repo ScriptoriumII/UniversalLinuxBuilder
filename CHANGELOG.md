@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.0.27
+- **Cases à cocher invisibles** (Wi-Fi, Bluetooth, Impression, Firmware, Flathub, Dépôts tiers, Bureau vanille) : sous Windows, une fois la feuille de style appliquée, la case n'avait ni cadre ni coche tant qu'elle n'était pas dans un cadre (seul « Avancé » s'affichait bien). Les cases ont maintenant un indicateur explicite : cadre aux couleurs du thème, remplissage accent et coche blanche quand elles sont cochées, état grisé distinct. Thème clair et sombre ; rendu vérifié en capture hors écran, pas sur votre Windows.
+
 ## 2.0.26
 - **Fedora : la construction va maintenant jusqu'à Anaconda, mais l'échec final est opaque.** Journal reçu : clonage (f43 en repli) OK, 1839 RPM téléchargés (2,18 Gio), puis « An error occurred during the transaction: The transaction process has ended with errors » ; le « No such file or directory: '/usr/sbin/load_policy' » qui suit n'est qu'un symptôme de sortie, pas la cause.
 - La cause réelle (paquet, scriptlet, conflit) est dans les journaux d'Anaconda/dnf5, pas dans `lmc.log`. En cas d'échec, la construction affiche maintenant un **« Diagnostic Fedora »** : lignes d'erreur de `packaging.log`, `program.log`, `anaconda.log`, `dnf5.log`… puis la fin de `lmc.log`. La queue de sortie conservée dans le message d'échec passe de 1800 à 6000 caractères.
