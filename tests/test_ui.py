@@ -235,3 +235,20 @@ def test_tool_tabs_are_last(fake_wsl, monkeypatch):
     assert names[:5] == [
         "Distribution", "Système", "Applications", "Vérification", "ISO"
     ]
+
+
+@posix_only
+def test_fedora_third_party_option_only_for_fedora(fake_wsl, monkeypatch):
+    from ulb.constants import FEDORA_THIRD_PARTY
+
+    app, window = make_window(fake_wsl, monkeypatch)
+    box = window.flags[FEDORA_THIRD_PARTY]
+
+    for family in ("Debian", "Arch Linux", "Gentoo", "Slackware"):
+        window.change_family(family)
+        assert box.isHidden()
+
+    window.change_family("Fedora")
+    assert not box.isHidden()
+    window.change_family("Debian")
+    assert box.isHidden()

@@ -1991,7 +1991,8 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
         self.kernel.setCurrentText("Stable")
 
-        self.flags[FEDORA_THIRD_PARTY].setEnabled(
+        # Option propre à Fedora : invisible pour les autres familles.
+        self.flags[FEDORA_THIRD_PARTY].setVisible(
             family == "Fedora"
         )
 

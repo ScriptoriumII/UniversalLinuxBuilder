@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.0.16
+- **Onglet Système** : la case « Dépôts tiers non libres (Fedora) » n'apparaît plus que si la famille Fedora est choisie (elle était seulement grisée avant). Elle n'est de toute façon jamais appliquée aux autres familles.
+- Le bouton « Dépôts tiers Fedora » de l'onglet WSL2 reste disponible : il agit sur un WSL Fedora, quelle que soit la famille de l'ISO.
+
 ## 2.0.15
 - **Ordre des onglets** : Distribution, Système, Applications, Vérification, **ISO**, puis **Virtualisation** et **WSL2** à l'extrême droite. Le parcours de création d'ISO n'est plus coupé par les onglets d'outils (test en VM, gestion WSL2). Le bouton « Continuer » de Vérification mène désormais à ISO.
 
