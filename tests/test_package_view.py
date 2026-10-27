@@ -173,3 +173,58 @@ def test_switching_family_clears_previous_results(fake_wsl, monkeypatch):
     window.change_family("Gentoo")
     assert window.build_button.isEnabled()
     window.close()
+
+
+def test_dnf5_assumeno_exit_code_one_is_a_valid_simulation():
+    from ulb.package_view import simulation_verdict
+
+    rows = parse_simulation("Fedora", DNF, {"kernel"})
+    aborted = "Operation aborted by the user.\n"
+
+    ok, reason = simulation_verdict("Fedora", DNF, aborted, 1, rows)
+    assert ok and "code 1 normal" in reason
+
+    ok, reason = simulation_verdict("Fedora", DNF, "", 0, rows)
+    assert ok
+
+    # Tout est déjà installé : rien à faire, code 0.
+    ok, _ = simulation_verdict(
+        "Fedora", "Nothing to do.\n", "", 0, []
+    )
+    assert ok
+
+
+def test_dnf5_real_failures_are_still_rejected():
+    from ulb.package_view import simulation_verdict
+
+    rows = parse_simulation("Fedora", DNF, {"kernel"})
+
+    for text in (
+        "No match for argument: lightdm-gtk\n",
+        "Failed to resolve the transaction:\nProblem: conflicting requests\n",
+        "Problem: package a requires b, but none can be installed\n"
+    ):
+        ok, reason = simulation_verdict("Fedora", "", text, 1, [])
+        assert not ok and reason.startswith("dnf5 signale")
+
+        # Même si un tableau partiel a été lu.
+        ok, _ = simulation_verdict("Fedora", DNF, text, 1, rows)
+        assert not ok
+
+    ok, reason = simulation_verdict("Fedora", "", "", 1, [])
+    assert not ok and "aucune transaction" in reason
+
+    ok, reason = simulation_verdict("Fedora", DNF, "", 2, rows)
+    assert not ok and "code 2" in reason
+
+
+def test_other_families_still_require_exit_code_zero():
+    from ulb.package_view import simulation_verdict
+
+    assert simulation_verdict("Debian", APT, "", 0, [1])[0]
+    assert not simulation_verdict("Debian", "", "E: Unable to locate", 100, [])[0]
+    assert not simulation_verdict("Debian", APT, "E: broken", 0, [1])[0]
+    assert simulation_verdict("Arch Linux", PACMAN, "", 0, [1])[0]
+    assert not simulation_verdict("Arch Linux", "", "error", 1, [])[0]
+    assert simulation_verdict("Gentoo", EMERGE, "", 0, [1])[0]
+    assert not simulation_verdict("Gentoo", EMERGE, "", 1, [1])[0]

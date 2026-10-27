@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.0.21
+- **Fedora : l'analyse des paquets n'était jamais validée, donc « Créer l'ISO » restait bloqué** (« L'analyse des paquets doit être validée avant la construction »). Cause : `dnf5 --assumeno` calcule la transaction puis répond « non » à la confirmation, ce qui se termine par le **code 1** (« Operation aborted by the user »). L'application exigeait le code 0. Le verdict regarde maintenant le contenu : transaction calculée (tableau lu ou « Transaction Summary ») sans message d'échec ; code 0 ou 1 acceptés pour Fedora.
+- Les vrais échecs restent refusés et expliqués : `Problem`, `Failed to resolve`, `No match for argument`, `Cannot find a package`, code autre que 0/1, ou aucune transaction calculée. Le message d'avertissement et le journal indiquent désormais la raison.
+- Debian, Arch et Gentoo : comportement inchangé (code 0 exigé ; Debian refuse aussi une erreur `E:`).
+- Non vérifié sur un vrai Fedora 44 : le format exact des messages d'échec de dnf5 est celui que je connais ; si un cas réel est refusé à tort, la sortie native indique la ligne en cause.
+
 ## 2.0.20
 - **Test du gestionnaire précis** (Configuration > Outils et dépôts > « Tester le gestionnaire ») : le test vérifie chaque outil réellement utilisé par l'application pour la famille (Debian : apt-get et apt-cache ; Fedora : dnf5 ; Arch : pacman ; Gentoo : emerge ; Slackware : slackpkg), affiche son chemin et sa version, et conclut par un message clair « Gestionnaire opérationnel : <outil> — <famille> (WSL « nom »)  » ou « Gestionnaire incomplet : <outil manquant> ».
 - En cas d'échec : indice utile (dnf4 présent mais dnf5 attendu sous Fedora ; apt incomplet sous Debian), erreur WSL le cas échéant, et conseil (« Installer les outils »).

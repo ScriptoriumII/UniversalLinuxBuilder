@@ -14,7 +14,7 @@ from .vm import INFO_MARKER, URL_MARKER, install_vm_tools, reset_vm_disk, run_vm
 from .project import export_project
 from .projects import normalize_project, read_project
 from .checklist import installer_checklist
-from .package_view import context_line, package_origins, parse_simulation, update_message
+from .package_view import context_line, package_origins, parse_simulation, simulation_verdict, update_message
 from .precheck import live_essentials
 from .settings import load_settings, save_settings
 from .logos import logo, set_mode as set_logo_mode
@@ -3390,11 +3390,11 @@ class UniversalLinuxBuilder(
         self.results_stale = False
         self.refresh_verification_titles()
 
-        # DNF5 --assumeno peut retourner un code non nul
-        # lors d'un refus volontaire.
-        # On ne transforme pas ce code en succès sans preuve.
-
-        self.analysis_ok = code == 0
+        # dnf5 --assumeno se termine par le code 1 après un calcul réussi :
+        # le verdict regarde le contenu, pas seulement le code retour.
+        self.analysis_ok, reason = simulation_verdict(
+            family, output, stderr, code, rows
+        )
 
         self.verification_log.setPlainText(
             "Famille : " + family
@@ -3408,10 +3408,11 @@ class UniversalLinuxBuilder(
             + "\nCode retour : " + str(code)
             + "\nStatut : "
             + (
-                "Simulation terminée"
+                "Simulation validée"
                 if self.analysis_ok
                 else "Résultat non validé"
             )
+            + " (" + reason + ")"
             + "\n\n"
             + output
             + "\n"
@@ -3424,7 +3425,7 @@ class UniversalLinuxBuilder(
 
         if not self.analysis_ok:
             self.warning(
-                "Analyse non validée.\n"
+                "Analyse non validée : " + reason + ".\n"
                 "Consulte la sortie native."
             )
 

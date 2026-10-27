@@ -175,6 +175,65 @@ def parse_simulation(family, output, requested=()):
     return parser(output, set(requested))
 
 
+# Marqueurs d'échec de dnf5 (au début d'une ligne).
+DNF_FAILURE = re.compile(
+    r"^\s*(Failed to resolve|No match for argument|Problem|"
+    r"Cannot find a package|Unable to find a match|"
+    r"Error:|Failed to (?:load|download))",
+    re.IGNORECASE | re.MULTILINE
+)
+
+
+def simulation_verdict(family, output, stderr, code, rows):
+    """(valide, explication) pour la simulation d'installation.
+
+    dnf5 --assumeno calcule la transaction puis répond « non » à la
+    question de confirmation : il se termine alors avec le code 1
+    (« Operation aborted by the user »). C'est un succès de simulation,
+    pas une erreur ; l'échec réel se reconnaît à ses messages
+    (Problem, Failed to resolve, No match for argument)."""
+
+    text = output + "\n" + stderr
+
+    if family == "Fedora":
+        failure = DNF_FAILURE.search(text)
+
+        if failure:
+            line = text[failure.start():].strip().splitlines()[0]
+
+            return False, "dnf5 signale : " + line[:160]
+
+        summarized = (
+            bool(rows)
+            or "Transaction Summary" in output
+            or "Nothing to do" in text
+        )
+
+        if code == 0 and summarized:
+            return True, "transaction calculée"
+
+        if code == 1 and summarized:
+            return True, (
+                "transaction calculée ; dnf5 s'arrête volontairement "
+                "avant l'installation (--assumeno, code 1 normal)"
+            )
+
+        if code not in (0, 1):
+            return False, "dnf5 a renvoyé le code " + str(code)
+
+        return False, (
+            "aucune transaction calculée (code " + str(code) + ")"
+        )
+
+    if code:
+        return False, "code retour " + str(code)
+
+    if family == "Debian" and re.search(r"^E: ", stderr, re.MULTILINE):
+        return False, "apt signale une erreur (E:)"
+
+    return True, "simulation terminée"
+
+
 UPDATE_EFFECTS = {
     "Debian": "Met à jour l'index des paquets (apt-get update). "
               "Aucun paquet n'est mis à niveau.",

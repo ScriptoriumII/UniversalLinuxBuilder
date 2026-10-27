@@ -424,3 +424,36 @@ def test_manager_test_gives_precise_message(fake_wsl, monkeypatch):
     assert "WSL «" in shown[0]
     log = window.wsl_log.toPlainText()
     assert log.startswith(("✔ ", "✘ ")) and "Commande :" in log
+
+
+@posix_only
+def test_fedora_analysis_validated_despite_assumeno_exit_code(
+    fake_wsl, monkeypatch
+):
+    from test_package_view import DNF
+
+    app, window = make_window(fake_wsl, monkeypatch)
+    warnings = []
+
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda parent, title, text, *a, **k: warnings.append(text))
+    )
+
+    window.change_family("Fedora")
+    revision = window.revision
+
+    # Cas réel : dnf5 --assumeno calcule puis s'arrête avec le code 1.
+    window.analysis_done(
+        revision, "Fedora",
+        (DNF, "Operation aborted by the user.\n", 1), ""
+    )
+    assert window.analysis_ok is True and not warnings
+    assert "Simulation validée" in window.verification_log.toPlainText()
+
+    # Un vrai échec reste refusé et explique pourquoi.
+    window.analysis_done(
+        revision, "Fedora", ("", "No match for argument: zzz\n", 1), ""
+    )
+    assert window.analysis_ok is False
+    assert warnings and "No match for argument" in warnings[0]
