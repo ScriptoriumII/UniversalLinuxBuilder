@@ -1,6 +1,6 @@
 from pathlib import Path
 import json
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHeaderView, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHeaderView, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QScrollArea, QSpinBox, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget
 from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication, QDesktopServices, QIcon, QPixmap
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from .constants import AUDIO, FEDORA_THIRD_PARTY, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
@@ -20,12 +20,16 @@ from .settings import load_settings, save_settings
 from .logos import logo, set_mode as set_logo_mode
 from .catalog import INTERNET, INTERNET_FAMILIES, search_online
 from .remaster import REMASTER_FAMILIES
+from .ui_advanced import AdvancedMixin
 from .ui_remaster import RemasterMixin
+from .ui_ventoy import VentoyMixin
 from .packages import parse_search, search_packages, simulate_packages
 from .wsl import CANCELLED, run
 
 
-class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
+class UniversalLinuxBuilder(
+    RemasterMixin, AdvancedMixin, VentoyMixin, QMainWindow
+):
 
     def __init__(self):
         super().__init__()
@@ -151,6 +155,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.make_verification()
         self.make_iso()
         self.make_virtualization()
+        self.make_ventoy()
         self.make_wsl()
 
         footer = QHBoxLayout()
@@ -209,6 +214,31 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         self.tabs.addTab(widget, name)
 
         return layout
+
+    def scroll_page(self, name):
+        """Page défilante (onglets longs)."""
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        scroll.setWidget(widget)
+        self.tabs.addTab(scroll, name)
+
+        return layout
+
+    def tab_index(self, name):
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == name:
+                return index
+
+        return 0
 
     # --------------------------------------------------------
     # THÈME
@@ -938,7 +968,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
     # --------------------------------------------------------
 
     def make_system(self):
-        layout = self.page("Système")
+        layout = self.scroll_page("Système")
         self.banner(layout)
 
         form = QFormLayout()
@@ -1013,6 +1043,8 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
 
             self.flags[name] = checkbox
             layout.addWidget(checkbox)
+
+        self.build_advanced_group(layout)
 
         layout.addStretch()
         self.next_button(layout, 2)
@@ -2051,6 +2083,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
             self.apply_associations()
 
         self.refresh_remaster()
+        self.refresh_advanced()
 
     def release_changed(self, *_):
         self.invalidate()
@@ -2399,7 +2432,7 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
                 + " dans l'onglet WSL2."
             )
 
-            self.tabs.setCurrentIndex(6)
+            self.tabs.setCurrentIndex(self.tab_index("WSL2"))
             self.wsl_sections.setCurrentIndex(2)
 
             return ""
@@ -3629,7 +3662,13 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
                 self.family_name == "Fedora"
                 and self.flags[FEDORA_THIRD_PARTY].isChecked()
             ),
-            "cleanup": self.cleanup_option.isChecked()
+            "cleanup": self.cleanup_option.isChecked(),
+            "advanced": self.advanced_data(),
+            "kernel_package": {
+                "Stable": "linux",
+                "LTS": "linux-lts",
+                "Hardened": "linux-hardened"
+            }.get(self.kernel.currentText(), "linux")
         }
 
     def create_iso(self):
@@ -3672,6 +3711,15 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
         if not env:
             return
 
+        problems = self.advanced_errors()
+
+        if problems:
+            self.warning(
+                "Options avancées invalides :\n- " + "\n- ".join(problems)
+            )
+            self.tabs.setCurrentIndex(self.tab_index("Système"))
+            return
+
         folder = QFileDialog.getExistingDirectory(
             self,
             "Choisir le dossier de destination (il peut contenir d'autres fichiers)"
@@ -3712,6 +3760,12 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
                 if family == "Arch Linux"
                 else ""
             )
+            + (
+                "Options avancées activées : générées mais jamais "
+                "validées sur une vraie construction.\n\n"
+                if self.advanced_data()["enabled"]
+                else ""
+            )
             + "Cette opération peut durer longtemps et "
             "nécessiter plusieurs Go d'espace.\n\n"
             "L'installation sur disque, BIOS/UEFI "
@@ -3733,7 +3787,14 @@ class UniversalLinuxBuilder(RemasterMixin, QMainWindow):
                 self.iso_packages(),
                 folder,
                 self.desktop.currentText(),
-                self.build_options()
+                dict(
+                    self.build_options(),
+                    password=(
+                        self.advanced_password()
+                        if self.advanced_data()["enabled"]
+                        else ""
+                    )
+                )
             ),
             self.build_done,
             self.iso_log,

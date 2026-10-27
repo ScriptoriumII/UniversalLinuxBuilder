@@ -17,6 +17,7 @@ from .constants import (
     REQUIRED_SPACE,
     VERSION
 )
+from .advanced import arch_extras, debian_extras, fedora_extras
 from .environments import verify_tools
 from .precheck import debian_postcheck
 from .wsl import Control, decode, execute, wsl_stream
@@ -30,6 +31,17 @@ CHUNK = 4 * 1024 * 1024
 
 def quote_all(names):
     return " ".join(shlex.quote(name) for name in names)
+
+
+def public_options(options):
+    """Options sans le mot de passe (jamais écrit dans un rapport)."""
+
+    shown = {k: v for k, v in options.items() if k != "password"}
+
+    if options.get("password"):
+        shown["password"] = "(défini, non enregistré)"
+
+    return shown
 
 
 def free_name(directory, name):
@@ -81,13 +93,17 @@ def flathub_include(root):
 
 
 def debian_script(workspace, release, packages, options):
+    extra = debian_extras(
+        options.get("advanced"), options.get("password", "")
+    )
+
     areas = (
         "main contrib non-free non-free-firmware"
-        if options.get("firmware")
+        if options.get("firmware") or extra["nonfree"]
         else "main"
     )
 
-    package_list = list(packages)
+    package_list = list(packages) + extra["packages"]
 
     if options.get("firmware"):
         package_list += [
@@ -107,6 +123,8 @@ def debian_script(workspace, release, packages, options):
     if options.get("light"):
         config.append("--apt-recommends false")
 
+    config += extra["config"]
+
     return (
         "set -eu; "
         "mkdir -p " + shlex.quote(workspace) + "; "
@@ -116,6 +134,7 @@ def debian_script(workspace, release, packages, options):
         'printf "%s\\n" '
         + quote_all(sorted(set(package_list)))
         + " > config/package-lists/ulb.list.chroot; "
+        + (extra["setup"] + "; " if extra["setup"] else "")
         + (
             flathub_include("config/includes.chroot") + "; "
             if options.get("flathub")
@@ -167,7 +186,20 @@ def fedora_script(workspace, release, packages, desktop, options=None):
         FEDORA_KICKSTARTS["Aucun"]
     )
 
-    post = fedora_post_lines(release, options or {})
+    options = options or {}
+    extra = fedora_extras(
+        release, options.get("advanced"), options.get("password", "")
+    )
+
+    post = fedora_post_lines(release, options) + extra["post"]
+
+    head_command = (
+        r"printf '%s\n' '' " + quote_all(extra["head"]) + " >> flat.ks; "
+        if extra["head"]
+        else ""
+    )
+
+    packages = list(packages) + extra["packages"]
 
     post_command = (
         "printf '%s\\n' '' '%post' "
@@ -201,7 +233,8 @@ def fedora_script(workspace, release, packages, desktop, options=None):
         'ls "$dir" >&2; exit 1; }; '
         'ksflatten --config "$ks" --output flat.ks '
         "--version F" + release + "; "
-        "printf '%s\n' '' '%packages' "
+        + head_command
+        + "printf '%s\n' '' '%packages' "
         + quote_all(FEDORA_LIVE_REQUIRED)
         + " "
         + quote_all(packages)
@@ -214,7 +247,8 @@ def fedora_script(workspace, release, packages, desktop, options=None):
         "--volid ULB-F" + release + " "
         "--iso-only --iso-name ulb-fedora.iso "
         "--nomacboot "
-        "--tmp tmp --resultdir result "
+        + (quote_all(extra["lmc"]) + " " if extra["lmc"] else "")
+        + "--tmp tmp --resultdir result "
         "--logfile lmc.log "
         "|| { tail -n 80 lmc.log >&2 || true; exit 1; }"
     )
@@ -223,6 +257,14 @@ def fedora_script(workspace, release, packages, desktop, options=None):
 def arch_script(workspace, packages, options=None):
     options = options or {}
     profile = "/usr/share/archiso/configs/releng"
+
+    extra = arch_extras(
+        options.get("advanced"),
+        options.get("kernel_package", "linux"),
+        options.get("password", "")
+    )
+
+    packages = list(packages) + extra["packages"]
 
     return (
         "set -eu; "
@@ -247,6 +289,8 @@ def arch_script(workspace, packages, options=None):
             if options.get("flathub")
             else ""
         )
+        + (extra["setup"] + "; " if extra["setup"] else "")
+        + extra["env"]
         + "mkarchiso -v -w work -o out profile"
     )
 
@@ -666,7 +710,7 @@ def build_iso(
             "Workspace : " + workspace
             + (" (supprimé)" if cleaned else " (conservé)")
             + "\n"
-            "Options : " + str(options) + "\n"
+            "Options : " + str(public_options(options)) + "\n"
             "Code retour : " + str(code) + "\n"
             + (
                 "Résultat : " + (

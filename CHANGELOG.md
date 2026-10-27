@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.0.18
+- **Nouvel onglet Ventoy** (avant WSL2) : télécharge la dernière version officielle de Ventoy (empreinte SHA-256 vérifiée), liste les clés USB (les disques système et de démarrage sont exclus, le disque 0 aussi), installe ou met à jour Ventoy par `Ventoy2Disk.exe VTOYCLI` (style MBR/GPT, Secure Boot, espace réservé, système de fichiers exFAT/NTFS/FAT32 ; autorisation UAC demandée par Windows), puis copie des ISO sans jamais écraser l'existant. La clé est revérifiée juste avant l'écriture.
+- **Persistance Debian** : fichier ext4 « persistence » créé dans un WSL Debian, copié sur la clé et déclaré dans `ventoy/ventoy.json` (fichier existant fusionné, refusé s'il est invalide).
+- **Groupe « Avancé »** (onglet Système, décoché par défaut) : langue, clavier, fuseau horaire, nom d'hôte, utilisateur et mot de passe du live, persistance, chiffrement LUKS, système de fichiers (ext4/btrfs/xfs) et instantanés, Secure Boot (paquets signés), pilotes NVIDIA et codecs, miroir et proxy, et pour Arch Linux seulement : dépôts pacman et paquets AUR. Un tableau indique, pour la famille choisie, ce qui est Appliqué, Partiel, Non applicable ou Désactivé.
+- Le mot de passe n'est jamais enregistré (ni réglages, ni projet, ni rapport) ; seule son empreinte SHA-512 est placée dans l'image.
+- L'onglet Système défile pour rester utilisable avec le groupe Avancé.
+- Non vérifié en réel : aucune de ces options n'a été éprouvée sur une vraie construction ni sur une vraie clé (voir README).
+
 ## 2.0.17
 - **Gentoo et Slackware : association « Dépôt internet (sans WSL) »** (onglet WSL2, Associations). Choisie automatiquement quand aucun WSL de la famille n'existe ; un WSL Gentoo/Slackware reste prioritaire s'il est détecté. Indicateur « ● Internet ».
 - **Recherche d'applications sans WSL** : Slackware lit `PACKAGES.TXT` du miroir officiel (version 15.0 ou current choisie dans l'onglet Distribution) ; Gentoo interroge l'API Repology (dépôt `gentoo`). Résultats : nom, version, description.

@@ -51,6 +51,19 @@ Pour **chercher des applications** (onglet Applications) sans WSL Gentoo/Slackwa
 « Dépôt internet (sans WSL) » lit le catalogue en ligne : `PACKAGES.TXT` du miroir Slackware, Repology pour Gentoo.
 L'analyse des dépendances reste réservée à un vrai WSL.
 
+## Clé USB Ventoy et options avancées
+
+L'onglet **Ventoy** (Windows) : 1) télécharger Ventoy, 2) choisir la clé (liste des disques USB) et installer ou mettre à jour,
+3) copier les ISO (et créer la persistance Debian). L'installation **efface la clé** ; Windows demande l'autorisation
+administrateur. Options absentes (non documentées en ligne de commande) : alignement 4 Ko, « Effacer Ventoy », nom du volume.
+
+Le groupe **Avancé** (onglet Système) règle langue/clavier/fuseau, nom d'hôte, utilisateur et mot de passe du live,
+persistance (Debian), LUKS, système de fichiers et instantanés btrfs, Secure Boot, pilotes NVIDIA/codecs, miroir/proxy et,
+pour Arch Linux seulement, dépôts pacman et paquets AUR. Son tableau d'état dit ce qui est réellement appliqué par famille.
+Limites : options générées mais **jamais validées** sur une vraie construction ; Secure Boot = paquets signés seulement ;
+LUKS non forçable sous Fedora (case dans Anaconda) ; Arch n'a pas d'installateur graphique ; la persistance n'est prévue
+que pour Debian ; les paquets ajoutés par Avancé ne passent pas par l'analyse des dépendances.
+
 ## Thème
 
 Sélecteur **Thème** en haut à droite : *Système* (suit Windows, y compris en cours d'exécution), *Clair* ou *Sombre*.
@@ -64,10 +77,11 @@ Le choix est mémorisé.
 4. **Vérification** – outils, puis analyse des dépendances (simulation).
 5. **ISO** – profil Standard/Léger, options, **Créer l'ISO**, **Tester le démarrage (QEMU)**. La barre de construction affiche un pourcentage et une estimation du temps restant (affinée à chaque construction réussie).
 
-Deux onglets d'outils, volontairement à l'extrême droite pour ne pas se mélanger avec la création d'ISO :
+Trois onglets d'outils, volontairement à l'extrême droite pour ne pas se mélanger avec la création d'ISO :
 
 6. **Virtualisation** – essayer une ISO dans QEMU/KVM (web noVNC, fenêtre WSLg ou VNC), installer sur un disque virtuel puis démarrer sur ce disque.
-7. **WSL2** – distributions, outils de construction, dépôts.
+7. **Ventoy** – clé USB bootable, copie d'ISO, persistance.
+8. **WSL2** – distributions, outils de construction, dépôts.
 
 Un dossier de sortie contient : `ULB_<famille>_<version>_<date-heure>.iso`, `SHA256SUMS` (complété, jamais écrasé), `build_report_<date-heure>.txt`. Le dossier peut déjà contenir d'autres ISO : tes ISO existantes ne sont jamais écrasées
 (et `boot_test_uefi.png` après un test de démarrage).

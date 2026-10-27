@@ -231,7 +231,7 @@ def test_tool_tabs_are_last(fake_wsl, monkeypatch):
         window.tabs.tabText(i) for i in range(window.tabs.count())
     ]
 
-    assert names[-3:] == ["ISO", "Virtualisation", "WSL2"]
+    assert names[-4:] == ["ISO", "Virtualisation", "Ventoy", "WSL2"]
     assert names[:5] == [
         "Distribution", "Système", "Applications", "Vérification", "ISO"
     ]
@@ -290,3 +290,55 @@ def test_internet_catalog_association(fake_wsl, monkeypatch):
 
     assert window.search_results.rowCount() == 1
     assert window.search_results.item(0, 0).text() == "vlc"
+
+
+@posix_only
+def test_advanced_group_and_ventoy_tab(fake_wsl, monkeypatch):
+    from ulb.advanced import OFF
+
+    app, window = make_window(fake_wsl, monkeypatch)
+
+    names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+    assert names.index("Ventoy") == names.index("WSL2") - 1
+    assert window.tab_index("WSL2") == names.index("WSL2")
+
+    # Avancé : décoché par défaut, rien n'est appliqué.
+    data = window.advanced_data()
+    assert data["enabled"] is False and "password" not in data
+    assert window.build_options()["advanced"]["enabled"] is False
+    assert window.adv_report.item(0, 1).text() == OFF
+    assert window.advanced_body.isHidden()
+
+    window.advanced_box.setChecked(True)
+    assert not window.advanced_body.isHidden()
+    window.adv_hostname.setText("poste")
+    window.adv_password.setText("secret")
+    assert window.advanced_data()["hostname"] == "poste"
+    assert "password" not in window.build_options()["advanced"]
+    assert "secret" not in json.dumps(window.project_data())
+
+    # Dépôts tiers : visibles seulement sous Arch Linux.
+    window.change_family("Debian")
+    assert window.adv_arch_box.isHidden()
+    window.change_family("Arch Linux")
+    assert not window.adv_arch_box.isHidden()
+    window.change_family("Fedora")
+    assert window.adv_arch_box.isHidden()
+
+    # Persistance : réservée à Debian.
+    window.change_family("Debian")
+    assert window.adv_persistence.isEnabled()
+    window.change_family("Fedora")
+    assert not window.adv_persistence.isEnabled()
+
+    # Une saisie invalide bloque la construction.
+    window.adv_hostname.setText("mauvais nom;")
+    assert window.advanced_errors()
+
+    # Réglages enregistrés dans la configuration, sans mot de passe.
+    assert window.config["advanced"]["enabled"] is True
+    assert "secret" not in json.dumps(window.config)
+
+    # Ventoy : hors Windows, aucun bouton d'écriture.
+    assert not window.ventoy_install_button.isEnabled()
+    assert not window.ventoy_copy_button.isEnabled()
