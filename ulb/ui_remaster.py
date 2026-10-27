@@ -190,7 +190,7 @@ class RemasterMixin:
         if not name:
             self.warning(
                 "Il faut un WSL Debian, Fedora ou Arch Linux pour "
-                "assembler l'ISO (onglet WSL2). Gentoo et Slackware "
+                "assembler l'ISO (onglet Configuration). Gentoo et Slackware "
                 "n'ont pas besoin de leur propre WSL."
             )
             return ""

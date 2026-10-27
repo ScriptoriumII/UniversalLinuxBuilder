@@ -22,11 +22,11 @@ py main.py --no-install   # contrôle sans rien installer
 
 Ce que le pré-contrôle ne peut pas faire à ta place : activer la virtualisation dans le BIOS/UEFI,
 installer WSL2 (`wsl --install --no-distribution` dans PowerShell administrateur, puis redémarrage)
-et installer une distribution (onglet **WSL2**). Il affiche la commande exacte pour chaque cas.
+et installer une distribution (onglet **Configuration**). Il affiche la commande exacte pour chaque cas.
 
 Prérequis : Windows 10/11 avec WSL2 et une distribution de la même famille que la cible
 (Debian pour Debian, Fedora de la **même version** pour Fedora, Arch pour Arch).
-L'onglet **WSL2** détecte les distributions, vérifie/installe les outils de construction.
+L'onglet **Configuration** (ex-WSL2) détecte les distributions, vérifie/installe les outils de construction.
 
 ## Gentoo et Slackware : ISO officielle puis remaster
 
@@ -81,7 +81,7 @@ Trois onglets d'outils, volontairement à l'extrême droite pour ne pas se méla
 
 6. **Virtualisation** – essayer une ISO dans QEMU/KVM (web noVNC, fenêtre WSLg ou VNC), installer sur un disque virtuel puis démarrer sur ce disque.
 7. **Ventoy** – clé USB bootable, copie d'ISO, persistance.
-8. **WSL2** – distributions, outils de construction, dépôts.
+8. **Configuration** – environnements WSL2, outils et actualisation des dépôts, associations. Pour Gentoo et Slackware, l'entrée « dépôt internet » du sélecteur Environnement actualise le catalogue en ligne.
 
 Un dossier de sortie contient : `ULB_<famille>_<version>_<date-heure>.iso`, `SHA256SUMS` (complété, jamais écrasé), `build_report_<date-heure>.txt`. Le dossier peut déjà contenir d'autres ISO : tes ISO existantes ne sont jamais écrasées
 (et `boot_test_uefi.png` après un test de démarrage).

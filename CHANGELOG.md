@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.0.19
+- L'onglet **WSL2** devient **Configuration** (les messages qui y renvoient sont mis à jour).
+- Sous-onglet « Outils et dépôts » : « Environnement WSL » devient **« Environnement »**.
+- Retrait des boutons **« Ajouter Flathub »** et **« Dépôts tiers Fedora »** : ces options se règlent dans Système (case cochée = incluse dans l'ISO, décochée = absente). Les fonctions restent dans le code et ses tests.
+- **Gentoo et Slackware** : le sélecteur Environnement propose « <famille> — dépôt internet (pas un WSL) », visible seulement quand l'une de ces deux familles est choisie. « Actualiser les dépôts » (Configuration, et onglet Applications) retélécharge `PACKAGES.TXT` (Slackware) ou sonde Repology (Gentoo, interrogé en direct) ; vérifier ou installer des outils n'a pas de sens pour ces entrées et le dit.
+- Non vérifié en réel : adresses et formats des catalogues (réseau restreint ici).
+
 ## 2.0.18
 - **Nouvel onglet Ventoy** (avant WSL2) : télécharge la dernière version officielle de Ventoy (empreinte SHA-256 vérifiée), liste les clés USB (les disques système et de démarrage sont exclus, le disque 0 aussi), installe ou met à jour Ventoy par `Ventoy2Disk.exe VTOYCLI` (style MBR/GPT, Secure Boot, espace réservé, système de fichiers exFAT/NTFS/FAT32 ; autorisation UAC demandée par Windows), puis copie des ISO sans jamais écraser l'existant. La clé est revérifiée juste avant l'écriture.
 - **Persistance Debian** : fichier ext4 « persistence » créé dans un WSL Debian, copié sur la clé et déclaré dans `ventoy/ventoy.json` (fichier existant fusionné, refusé s'il est invalide).

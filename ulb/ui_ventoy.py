@@ -441,7 +441,7 @@ class VentoyMixin:
             if self.environment_item(env) is None:
                 self.warning(
                     "La persistance demande un WSL Debian associé "
-                    "(onglet WSL2)."
+                    "(onglet Configuration)."
                 )
                 return
 

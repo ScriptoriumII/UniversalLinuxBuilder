@@ -102,3 +102,32 @@ def test_bad_answers_raise():
 
     with pytest.raises(SourceError):
         catalog.search_online("Debian", "x", "a")
+
+
+def test_refresh_online_slackware_and_gentoo():
+    catalog._cache.clear()
+    urls = []
+
+    command, (output, error, code) = catalog.refresh_online(
+        "Slackware", "15.0", opener_for(PACKAGES, urls)
+    )
+    assert code == 0 and "3 paquets" in output
+    assert command.endswith("PACKAGES.TXT")
+    assert catalog._cache[catalog.slackware_url("15.0")] == PACKAGES
+
+    # Retéléchargé à chaque actualisation (cache vidé).
+    catalog.refresh_online("Slackware", "15.0", opener_for(PACKAGES, urls))
+    assert len(urls) == 2
+
+    command, (output, error, code) = catalog.refresh_online(
+        "Gentoo", "stable", opener_for(REPOLOGY, urls)
+    )
+    assert code == 0 and "Repology" in output
+
+    with pytest.raises(SourceError):
+        catalog.refresh_online("Slackware", "15.0", opener_for("vide", urls))
+
+    with pytest.raises(SourceError):
+        catalog.refresh_online("Debian", "x", opener_for("", urls))
+
+    assert catalog.online_label("Gentoo").startswith("Gentoo")

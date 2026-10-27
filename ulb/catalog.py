@@ -185,3 +185,54 @@ def search_online(family, release, query, opener=open_url):
         raise SourceError("Pas de catalogue Internet pour " + family)
 
     return rows, "", 0
+
+
+def online_label(family):
+    return family + " — dépôt internet (pas un WSL)"
+
+
+def refresh_online(family, release, opener=open_url):
+    """Actualise le catalogue Internet : Slackware retélécharge
+    PACKAGES.TXT ; Gentoo sonde l'API Repology (interrogée en direct).
+    Retourne (commande, (sortie, erreurs, code)) comme update_repositories."""
+
+    if family == "Slackware":
+        url = slackware_url(release)
+        _cache.pop(url, None)
+        text = fetch_text(url, opener)
+        _cache[url] = text
+        count = len(parse_packages_txt(text))
+
+        if not count:
+            raise SourceError(
+                "PACKAGES.TXT téléchargé mais aucun paquet lu : " + url
+            )
+
+        return (
+            "GET " + url,
+            (
+                "Catalogue Slackware " + release + " actualisé : "
+                + str(count) + " paquets.",
+                "", 0
+            )
+        )
+
+    if family == "Gentoo":
+        url = repology_url("gentoo-sources")
+        rows = parse_repology(fetch_text(url, opener))
+
+        if not rows:
+            raise SourceError(
+                "Repology répond mais sans paquet Gentoo : " + url
+            )
+
+        return (
+            "GET " + url,
+            (
+                "Repology (dépôt gentoo) joignable ; interrogé en direct "
+                "à chaque recherche, rien à télécharger.",
+                "", 0
+            )
+        )
+
+    raise SourceError("Pas de catalogue Internet pour " + family)

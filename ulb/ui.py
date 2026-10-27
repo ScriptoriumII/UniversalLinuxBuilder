@@ -6,7 +6,7 @@ from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from .constants import AUDIO, FEDORA_THIRD_PARTY, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
 from .theme import SETTING_LABELS, SETTING_VALUES, THEMES, palette, resolve_mode, stylesheet
 from .tasks import Task
-from .environments import add_fedora_third_party, add_flathub, install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
+from .environments import install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
 from .builders import build_iso
 from .progress import BuildProgress, describe
 from .vmtest import boot_test
@@ -18,7 +18,9 @@ from .package_view import context_line, package_origins, parse_simulation, updat
 from .precheck import live_essentials
 from .settings import load_settings, save_settings
 from .logos import logo, set_mode as set_logo_mode
-from .catalog import INTERNET, INTERNET_FAMILIES, search_online
+from .catalog import (
+    INTERNET, INTERNET_FAMILIES, online_label, refresh_online, search_online
+)
 from .remaster import REMASTER_FAMILIES
 from .ui_advanced import AdvancedMixin
 from .ui_remaster import RemasterMixin
@@ -1707,7 +1709,7 @@ class UniversalLinuxBuilder(
     # --------------------------------------------------------
 
     def make_wsl(self):
-        layout = self.page("WSL2")
+        layout = self.page("Configuration")
 
         title = QLabel("Environnements WSL2")
         self.role(title, "heading")
@@ -1823,7 +1825,7 @@ class UniversalLinuxBuilder(
         row = QHBoxLayout()
 
         row.addWidget(
-            QLabel("Environnement WSL")
+            QLabel("Environnement")
         )
 
         self.wsl_choice = self.combo()
@@ -1854,20 +1856,6 @@ class UniversalLinuxBuilder(
             self.button(
                 "Actualiser les dépôts",
                 self.update_selected_repositories
-            )
-        )
-
-        row.addWidget(
-            self.button(
-                "Ajouter Flathub",
-                self.add_flathub_clicked
-            )
-        )
-
-        row.addWidget(
-            self.button(
-                "Dépôts tiers Fedora",
-                self.add_fedora_third_party_clicked
             )
         )
 
@@ -2085,6 +2073,9 @@ class UniversalLinuxBuilder(
         self.refresh_remaster()
         self.refresh_advanced()
 
+        if hasattr(self, "wsl_choice"):
+            self.refresh_environment_choice()
+
     def release_changed(self, *_):
         self.invalidate()
         self.update_header()
@@ -2181,13 +2172,8 @@ class UniversalLinuxBuilder(
         self.apply_table_icons()
 
         names = [item["name"] for item in items]
-        previous = self.wsl_choice.currentText()
-
-        self.wsl_choice.clear()
-        self.wsl_choice.addItems(names)
-
-        if previous in names:
-            self.wsl_choice.setCurrentText(previous)
+        self.wsl_names_cache = names
+        self.refresh_environment_choice()
 
         self.apply_associations()
 
@@ -2394,6 +2380,36 @@ class UniversalLinuxBuilder(
     # WSL2 : ENVIRONNEMENT SELECTIONNE ET PROJET
     # --------------------------------------------------------
 
+    def refresh_environment_choice(self):
+        """WSL installés + (Gentoo / Slackware seulement) le dépôt
+        internet de la famille choisie."""
+
+        previous = self.wsl_choice.currentText()
+        names = list(getattr(self, "wsl_names_cache", []))
+
+        if self.family_name in INTERNET_FAMILIES:
+            names.append(online_label(self.family_name))
+
+        self.wsl_choice.blockSignals(True)
+        self.wsl_choice.clear()
+        self.wsl_choice.addItems(names)
+
+        if previous in names:
+            self.wsl_choice.setCurrentText(previous)
+
+        self.wsl_choice.blockSignals(False)
+
+    def selected_online_family(self):
+        text = self.wsl_choice.currentText()
+
+        return next(
+            (
+                family for family in INTERNET_FAMILIES
+                if text == online_label(family)
+            ),
+            ""
+        )
+
     def selected_environment(self):
         name = self.wsl_choice.currentText()
 
@@ -2418,7 +2434,7 @@ class UniversalLinuxBuilder(
                 "Mode « Dépôt internet » : seule la recherche de "
                 "paquets est disponible. Les outils et l'analyse des "
                 "dépendances demandent un WSL " + self.family_name
-                + " (onglet WSL2)."
+                + " (onglet Configuration)."
             )
             return ""
 
@@ -2429,10 +2445,10 @@ class UniversalLinuxBuilder(
             self.warning(
                 "Associe un environnement WSL compatible avec "
                 + self.family_name
-                + " dans l'onglet WSL2."
+                + " dans l'onglet Configuration."
             )
 
-            self.tabs.setCurrentIndex(self.tab_index("WSL2"))
+            self.tabs.setCurrentIndex(self.tab_index("Configuration"))
             self.wsl_sections.setCurrentIndex(2)
 
             return ""
@@ -2571,6 +2587,10 @@ class UniversalLinuxBuilder(
     # --------------------------------------------------------
 
     def test_selected_manager(self):
+        if self.selected_online_family():
+            self.start_online_update(self.selected_online_family())
+            return
+
         name = self.selected_environment()
 
         if not name:
@@ -2605,7 +2625,21 @@ class UniversalLinuxBuilder(
             + stderr
         )
 
+    def online_has_no_tools(self):
+        if not self.selected_online_family():
+            return False
+
+        self.information(
+            "Un dépôt internet n'a pas d'outils à vérifier ni à "
+            "installer : seule l'actualisation du catalogue est utile."
+        )
+
+        return True
+
     def check_selected_tools(self):
+        if self.online_has_no_tools():
+            return
+
         name = self.selected_environment()
 
         if not name:
@@ -2645,6 +2679,9 @@ class UniversalLinuxBuilder(
         )
 
     def install_selected_tools(self):
+        if self.online_has_no_tools():
+            return
+
         name = self.selected_environment()
 
         if not name:
@@ -2710,94 +2747,40 @@ class UniversalLinuxBuilder(
     # WSL2 : ACTUALISATION DES DEPOTS
     # --------------------------------------------------------
 
-    def add_flathub_clicked(self):
-        name = self.selected_environment()
-
-        if not name:
-            return
-
-        family = self.environment_family(name)
-
-        if family not in MANAGER_BINARY:
-            self.warning("Famille Linux inconnue.")
-            return
-
-        if not self.confirm(
-            "Ajouter le dépôt Flathub (Flatpak, niveau système) "
-            "dans " + name + " ?\n\n"
-            "Flatpak sera installé s'il est absent."
-        ):
-            return
-
-        self.job(
-            add_flathub,
-            (name, family),
-            self.repo_command_done,
-            self.wsl_log
-        )
-
-    def add_fedora_third_party_clicked(self):
-        name = self.selected_environment()
-
-        if not name:
-            return
-
-        family = self.environment_family(name)
-
-        if family != "Fedora":
-            self.warning(
-                "Les dépôts tiers (RPM Fusion libre et non libre, "
-                "fedora-workstation-repositories) concernent "
-                "uniquement Fedora."
-            )
-            return
-
-        if not self.confirm(
-            "Activer RPM Fusion (libre et non libre) et les dépôts "
-            "tiers de Fedora dans " + name + " ?\n\n"
-            "Ces dépôts contiennent des logiciels non libres."
-        ):
-            return
-
-        self.job(
-            add_fedora_third_party,
-            (name, family),
-            self.repo_command_done,
-            self.wsl_log
-        )
-
-    def repo_command_done(self, data, error):
-        if error:
-            self.show_wsl_log(error)
-            self.warning("Opération impossible :\n" + error)
-            return
-
-        command, response = data
-        output, stderr, code = response
-
-        self.show_wsl_log(
-            "Commande : " + command
-            + "\nCode : " + str(code)
-            + "\n\n" + output[-9000:] + "\n" + stderr[-3000:]
-        )
-
-        if code:
-            self.warning("Échec. Consulte le journal.")
-
-        else:
-            self.information("Dépôt ajouté.")
-
     def update_selected_repositories(self):
+        if self.selected_online_family():
+            self.start_online_update(self.selected_online_family())
+            return
+
         name = self.selected_environment()
 
         if name:
             self.start_update(name)
 
     def update_project_repositories(self):
+        if self.uses_internet_catalog():
+            self.start_online_update(self.family_name)
+            return
+
         name = self.project_environment()
 
         if name:
             self.start_update(name)
+
+    def start_online_update(self, family):
+        release = (
+            self.release.currentText()
+            if family == self.family_name
+            else RELEASES[family][0]
+        )
+
+        self.job(
+            refresh_online,
+            (family, release),
+            lambda data, error:
+                self.update_done(online_label(family), data, error),
+            self.wsl_log
+        )
 
     def start_update(self, name):
         family = self.environment_family(name)
@@ -2827,7 +2810,7 @@ class UniversalLinuxBuilder(
         output, stderr, code = response
 
         message = (
-            "WSL : " + name
+            "Environnement : " + name
             + "\nCommande : " + command
             + "\nCode : " + str(code)
             + "\n\n"

@@ -231,7 +231,7 @@ def test_tool_tabs_are_last(fake_wsl, monkeypatch):
         window.tabs.tabText(i) for i in range(window.tabs.count())
     ]
 
-    assert names[-4:] == ["ISO", "Virtualisation", "Ventoy", "WSL2"]
+    assert names[-4:] == ["ISO", "Virtualisation", "Ventoy", "Configuration"]
     assert names[:5] == [
         "Distribution", "Système", "Applications", "Vérification", "ISO"
     ]
@@ -299,8 +299,8 @@ def test_advanced_group_and_ventoy_tab(fake_wsl, monkeypatch):
     app, window = make_window(fake_wsl, monkeypatch)
 
     names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-    assert names.index("Ventoy") == names.index("WSL2") - 1
-    assert window.tab_index("WSL2") == names.index("WSL2")
+    assert names.index("Ventoy") == names.index("Configuration") - 1
+    assert window.tab_index("Configuration") == names.index("Configuration")
 
     # Avancé : décoché par défaut, rien n'est appliqué.
     data = window.advanced_data()
@@ -342,3 +342,57 @@ def test_advanced_group_and_ventoy_tab(fake_wsl, monkeypatch):
     # Ventoy : hors Windows, aucun bouton d'écriture.
     assert not window.ventoy_install_button.isEnabled()
     assert not window.ventoy_copy_button.isEnabled()
+
+
+@posix_only
+def test_configuration_tab_and_online_environment(fake_wsl, monkeypatch):
+    from ulb import ui as ui_module
+    from ulb.catalog import online_label
+
+    app, window = make_window(fake_wsl, monkeypatch)
+    names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+    assert "WSL2" not in names and names[-1] == "Configuration"
+
+    # Plus de boutons Flathub / dépôts tiers dans la configuration.
+    from PySide6.QtWidgets import QPushButton
+    texts = [b.text() for b in window.findChildren(QPushButton)]
+    assert "Ajouter Flathub" not in texts
+    assert "Dépôts tiers Fedora" not in texts
+    assert not hasattr(window, "add_flathub_clicked")
+
+    def choices():
+        return [
+            window.wsl_choice.itemText(i)
+            for i in range(window.wsl_choice.count())
+        ]
+
+    # Entrée « dépôt internet » : seulement pour Gentoo / Slackware.
+    for family in ("Debian", "Fedora", "Arch Linux"):
+        window.change_family(family)
+        assert not any("internet" in c for c in choices())
+
+    calls = []
+    monkeypatch.setattr(
+        ui_module, "refresh_online",
+        lambda family, release: calls.append((family, release)) or (
+            "GET x", ("ok", "", 0)
+        )
+    )
+
+    for family in ("Gentoo", "Slackware"):
+        window.change_family(family)
+        assert online_label(family) in choices()
+        assert online_label(
+            "Slackware" if family == "Gentoo" else "Gentoo"
+        ) not in choices()
+
+        window.wsl_choice.setCurrentText(online_label(family))
+        window.update_selected_repositories()
+        pump(app, lambda: window.worker is None)
+
+    assert [c[0] for c in calls] == ["Gentoo", "Slackware"]
+
+    # L'actualisation de l'onglet Applications passe aussi par Internet.
+    window.update_project_repositories()
+    pump(app, lambda: window.worker is None)
+    assert calls[-1][0] == "Slackware"
