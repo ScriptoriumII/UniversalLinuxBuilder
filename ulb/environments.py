@@ -217,11 +217,135 @@ def verify_tools(env):
     return family, metadata, check_tools(env, family)
 
 
-def test_manager(env, family):
-    command = (
-        "command -v "
-        + shlex.quote(MANAGER_BINARY[family])
+# Outils réellement utilisés par l'application pour chaque famille
+# (recherche, simulation, mise à jour) et commande donnant leur version
+# (vide : l'outil n'a pas d'option de version).
+MANAGER_CHECKS = {
+    "Debian": [
+        ("apt-get", "apt-get --version"),
+        ("apt-cache", "apt-cache --version")
+    ],
+    "Fedora": [("dnf5", "dnf5 --version")],
+    "Arch Linux": [("pacman", "pacman --version")],
+    "Gentoo": [("emerge", "emerge --version")],
+    "Slackware": [("slackpkg", "")]
+}
+
+# Indice utile quand l'outil attendu manque.
+MANAGER_HINTS = {
+    "Fedora": ("dnf", "dnf4 est présent mais l'application utilise dnf5 "
+                      "(Fedora 41 et plus récent)."),
+    "Debian": ("apt", "apt est présent mais apt-get / apt-cache manquent : "
+                      "environnement WSL incomplet.")
+}
+
+
+def manager_command(family):
+    """Commande sh : une ligne par outil, « OK|nom|chemin|version »
+    ou « ABSENT|nom », puis « HINT|nom|chemin » pour un outil voisin."""
+
+    parts = []
+
+    for binary, version in MANAGER_CHECKS[family]:
+        shown = version + " 2>&1 | head -n 1" if version else "true"
+
+        parts.append(
+            "p=$(command -v " + shlex.quote(binary) + " 2>/dev/null) "
+            '&& echo "OK|' + binary + '|$p|$(' + shown + ')" '
+            '|| echo "ABSENT|' + binary + '"'
+        )
+
+    hint = MANAGER_HINTS.get(family)
+
+    if hint:
+        parts.append(
+            "h=$(command -v " + shlex.quote(hint[0]) + " 2>/dev/null) "
+            '&& echo "HINT|' + hint[0] + '|$h" || true'
+        )
+
+    return "; ".join(parts)
+
+
+def parse_manager_probe(family, output):
+    """[(nom, présent, chemin, version)] + indice éventuel."""
+
+    found = {}
+    hint = ""
+
+    for line in output.splitlines():
+        fields = line.strip().split("|")
+
+        if fields[0] == "OK" and len(fields) >= 3:
+            found[fields[1]] = (
+                True, fields[2], fields[3].strip() if len(fields) > 3 else ""
+            )
+
+        elif fields[0] == "ABSENT" and len(fields) >= 2:
+            found[fields[1]] = (False, "", "")
+
+        elif fields[0] == "HINT" and len(fields) >= 3:
+            hint = MANAGER_HINTS.get(family, ("", ""))[1]
+
+    rows = [
+        (binary,) + found.get(binary, (False, "", ""))
+        for binary, _ in MANAGER_CHECKS[family]
+    ]
+
+    return rows, hint
+
+
+def manager_report(env, family, output, error="", code=0):
+    """(ok, titre, détail) : verdict précis du test du gestionnaire."""
+
+    manager = MANAGER_BINARY[family]
+    rows, hint = parse_manager_probe(family, output)
+    missing = [name for name, present, _, _ in rows if not present]
+
+    lines = []
+
+    for name, present, path, version in rows:
+        lines.append(
+            ("✔ " if present else "✘ ") + name
+            + (" : " + path if present else " : introuvable")
+            + (" — " + version if version else "")
+        )
+
+    if not missing and not code:
+        title = (
+            "Gestionnaire opérationnel : " + manager + " — " + family
+            + " (WSL « " + env + " »)"
+        )
+        detail = (
+            "\n".join(lines)
+            + "\n\nChaque outil utilisé par l'application pour cette "
+            "famille est présent et répond. Le test ne contacte pas les "
+            "dépôts : utilise « Actualiser les dépôts » pour cela."
+        )
+
+        return True, title, detail
+
+    title = (
+        "Gestionnaire incomplet : " + ", ".join(missing or [manager])
+        + " — " + family + " (WSL « " + env + " »)"
     )
+    detail = "\n".join(lines)
+
+    if hint and missing:
+        detail += "\n\n" + hint
+
+    if code or error:
+        detail += "\n\nErreur WSL (code " + str(code) + ") : " + error.strip()
+
+    detail += (
+        "\n\nUtilise « Installer les outils » pour compléter cet "
+        "environnement, ou associe un autre WSL."
+    )
+
+    return False, title, detail
+
+
+def test_manager(env, family):
+    command = manager_command(family)
 
     return command, wsl(env, command, 60)
 

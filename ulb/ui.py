@@ -6,7 +6,7 @@ from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from .constants import AUDIO, FEDORA_THIRD_PARTY, BUILD_FAMILIES, BUILD_TOOLS, DESKTOPS, EXTRAS, FAMILIES, GRUB_PACKAGES, INSTALLERS, LIGHT_PRESET, LIVE_INSTALLER, PROFILES, VM_BOOTS, VM_DISPLAYS, VM_RAM, LOGOS, MANAGERS, MANAGER_BINARY, RELEASES, SAFE_PACKAGE, TARGET_BASE, VERSION
 from .theme import SETTING_LABELS, SETTING_VALUES, THEMES, palette, resolve_mode, stylesheet
 from .tasks import Task
-from .environments import install_distribution, best_match, check_tools, detect_all, install_tools, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
+from .environments import install_distribution, best_match, check_tools, detect_all, install_tools, manager_report, online_catalog, test_manager, update_repositories, verify_tools, wsl_names
 from .builders import build_iso
 from .progress import BuildProgress, describe
 from .vmtest import boot_test
@@ -2605,25 +2605,33 @@ class UniversalLinuxBuilder(
         self.job(
             test_manager,
             (name, family),
-            self.manager_test_done
+            lambda data, error:
+                self.manager_test_done(name, family, data, error)
         )
 
-    def manager_test_done(self, data, error):
+    def manager_test_done(self, name, family, data, error):
         if error:
             self.show_wsl_log(error)
+            self.warning("Test du gestionnaire impossible :\n" + error)
             return
 
         command, response = data
         output, stderr, code = response
 
-        self.show_wsl_log(
-            "Commande : " + command
-            + "\nCode : " + str(code)
-            + "\n\n"
-            + output
-            + "\n"
-            + stderr
+        ok, title, detail = manager_report(
+            name, family, output, stderr, code
         )
+
+        self.show_wsl_log(
+            ("✔ " if ok else "✘ ") + title + "\n\n" + detail
+            + "\n\nCommande : " + command
+        )
+
+        if ok:
+            self.information(title + "\n\n" + detail)
+
+        else:
+            self.warning(title + "\n\n" + detail)
 
     def online_has_no_tools(self):
         if not self.selected_online_family():

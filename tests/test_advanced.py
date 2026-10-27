@@ -156,7 +156,8 @@ def test_arch_extras_and_script():
     assert "alice:x:1000:1000" in extra["setup"]
     assert "[monrepo]" in extra["setup"]
     assert "makepkg" in extra["setup"] and "repo-add" in extra["setup"]
-    assert "pw" not in extra["setup"].replace("pwd", "")
+    clear = arch_extras(FULL, "linux-lts", "MotDePasseClair")["setup"]
+    assert "MotDePasseClair" not in clear and "$6$" in clear
 
     script = arch_script(
         "/w", ["base"], {"advanced": FULL, "kernel_package": "linux-lts",

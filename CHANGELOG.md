@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.0.20
+- **Test du gestionnaire précis** (Configuration > Outils et dépôts > « Tester le gestionnaire ») : le test vérifie chaque outil réellement utilisé par l'application pour la famille (Debian : apt-get et apt-cache ; Fedora : dnf5 ; Arch : pacman ; Gentoo : emerge ; Slackware : slackpkg), affiche son chemin et sa version, et conclut par un message clair « Gestionnaire opérationnel : <outil> — <famille> (WSL « nom »)  » ou « Gestionnaire incomplet : <outil manquant> ».
+- En cas d'échec : indice utile (dnf4 présent mais dnf5 attendu sous Fedora ; apt incomplet sous Debian), erreur WSL le cas échéant, et conseil (« Installer les outils »).
+- Le test ne contacte pas les dépôts ; « Actualiser les dépôts » sert à cela.
+- Testé en exécutant la vraie commande avec de faux outils pour les 5 familles (présents, absents, partiels). Non testé avec de vrais Debian, Fedora, Arch, Gentoo, Slackware.
+
 ## 2.0.19
 - L'onglet **WSL2** devient **Configuration** (les messages qui y renvoient sont mis à jour).
 - Sous-onglet « Outils et dépôts » : « Environnement WSL » devient **« Environnement »**.

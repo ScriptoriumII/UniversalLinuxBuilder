@@ -396,3 +396,31 @@ def test_configuration_tab_and_online_environment(fake_wsl, monkeypatch):
     window.update_project_repositories()
     pump(app, lambda: window.worker is None)
     assert calls[-1][0] == "Slackware"
+
+
+@posix_only
+def test_manager_test_gives_precise_message(fake_wsl, monkeypatch):
+    app, window = make_window(fake_wsl, monkeypatch)
+    shown = []
+
+    monkeypatch.setattr(
+        QMessageBox, "information",
+        staticmethod(lambda parent, title, text, *a, **k: shown.append(text))
+    )
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda parent, title, text, *a, **k: shown.append(text))
+    )
+
+    assert window.wsl_choice.count()
+    window.wsl_choice.setCurrentIndex(0)
+    window.test_selected_manager()
+    pump(app, lambda: window.worker is None)
+
+    assert len(shown) == 1
+    assert shown[0].startswith(
+        ("Gestionnaire opérationnel", "Gestionnaire incomplet")
+    )
+    assert "WSL «" in shown[0]
+    log = window.wsl_log.toPlainText()
+    assert log.startswith(("✔ ", "✘ ")) and "Commande :" in log
