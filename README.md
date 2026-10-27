@@ -10,10 +10,19 @@ Gentoo et Slackware : projet exportable, **pas de construction ISO**.
 
 ## Lancer
 
+**Poste neuf (recommandé)** : double-clic sur `lancer.bat`. Il vérifie Python (3.10+), l'installe
+avec winget si besoin, crée un environnement isolé `.venv`, installe PySide6, contrôle WSL2 et
+lance l'application.
+
 ```powershell
-py -m pip install -r requirements.txt
-py main.py
+py main.py --check        # diagnostic seul : Python, PySide6, WSL2, distributions, virtualisation, disque
+py main.py                # contrôle, installe PySide6 si absent, puis ouvre l'interface
+py main.py --no-install   # contrôle sans rien installer
 ```
+
+Ce que le pré-contrôle ne peut pas faire à ta place : activer la virtualisation dans le BIOS/UEFI,
+installer WSL2 (`wsl --install --no-distribution` dans PowerShell administrateur, puis redémarrage)
+et installer une distribution (onglet **WSL2**). Il affiche la commande exacte pour chaque cas.
 
 Prérequis : Windows 10/11 avec WSL2 et une distribution de la même famille que la cible
 (Debian pour Debian, Fedora de la **même version** pour Fedora, Arch pour Arch).

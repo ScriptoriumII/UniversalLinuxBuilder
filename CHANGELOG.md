@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.0.10
+- **Poste neuf** : `lancer.bat` (Python via winget si absent, environnement `.venv`, PySide6, contrôle WSL2, lancement) et pré-contrôle intégré à `main.py` (`ulb/preflight.py`, bibliothèque standard uniquement).
+- `py main.py --check` : rapport Python ≥ 3.10, PySide6, fichiers de l'application, WSL2 (présence, version par défaut, distributions), virtualisation BIOS/UEFI, espace disque, avec la commande de correction pour chaque point.
+- PySide6 manquant : installation automatique (`pip`, `--user` hors environnement virtuel), sauf avec `--no-install`. Les points bloquants arrêtent le démarrage avec un message clair ; les autres sont affichés puis l'application démarre.
+
 ## 2.0.9
 - **Dossier de destination déjà utilisé** : l'ISO peut être créée dans un dossier qui contient d'autres ISO ou fichiers. Nom daté (`ULB_Debian_trixie_20261026-173000.iso`), jamais d'écrasement (suffixe `-2`, `-3` si le nom existe), `SHA256SUMS` complété sans effacer les anciennes lignes, rapport `build_report_<date-heure>.txt`.
 - Le dossier doit toujours exister ; l'espace libre Windows est vérifié avant la construction.
