@@ -3,7 +3,7 @@ import os
 import re
 
 
-VERSION = "2.0.25"
+VERSION = "2.0.26"
 
 FAMILIES = [
     "Debian",
@@ -83,6 +83,9 @@ BUILD_TOOLS = {
         ("mksquashfs", "squashfs-tools"),
         ("xorriso", "xorriso"),
         ("ksflatten", "pykickstart"),
+        # Anaconda l'appelle en fin d'installation (sinon : « No such file
+        # or directory: '/usr/sbin/load_policy' » masque la vraie erreur).
+        ("load_policy", "policycoreutils"),
         # Kickstarts : paquet des dépôts, ou à défaut clonage git.
         ("rpm:fedora-kickstarts|spin-kickstarts|git", "fedora-kickstarts (ou git)"),
         ("rpm:lorax-lmc-novirt", "lorax-lmc-novirt"),

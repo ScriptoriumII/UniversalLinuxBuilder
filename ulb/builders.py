@@ -219,6 +219,24 @@ def fedora_clone_command(release):
     )
 
 
+# Diagnostic exécuté quand livemedia-creator échoue : la vraie cause d'un
+# « The transaction process has ended with errors » n'est pas dans lmc.log
+# mais dans les journaux d'Anaconda / dnf5 (paquet, scriptlet, conflit).
+FEDORA_DIAGNOSTIC = (
+    "echo '===== Diagnostic Fedora : cause probable =====' >&2; "
+    "for f in $(find /tmp \"$PWD\" -maxdepth 6 -type f "
+    "\\( -name packaging.log -o -name program.log -o -name anaconda.log "
+    "-o -name dnf5.log -o -name dnf.log -o -name dnf.rpm.log "
+    "-o -name storage.log \\) -newer flat.ks 2>/dev/null | sort -u | head -n 12); do "
+    "echo \"--- $f\" >&2; "
+    "grep -n -i -E 'error|fail|conflict|scriptlet|cannot|unable|"
+    "no such file|not found|denied' \"$f\" 2>/dev/null "
+    "| grep -v -i 'downloading' | tail -n 25 >&2 || true; done; "
+    "echo '===== Fin lmc.log =====' >&2; "
+    "tail -n 40 lmc.log >&2 || true; "
+)
+
+
 def fedora_script(workspace, release, packages, desktop, options=None):
     if not release.isdigit():
         raise RuntimeError(
@@ -289,7 +307,7 @@ def fedora_script(workspace, release, packages, desktop, options=None):
         + (quote_all(extra["lmc"]) + " " if extra["lmc"] else "")
         + "--tmp tmp --resultdir result "
         "--logfile lmc.log "
-        "|| { tail -n 80 lmc.log >&2 || true; exit 1; }"
+        "|| { " + FEDORA_DIAGNOSTIC + " exit 1; }"
     )
 
 
@@ -631,7 +649,7 @@ def build_iso(
                 "Construction échouée (code "
                 + str(code)
                 + ").\n"
-                + output[-1800:]
+                + output[-6000:]
             )
 
         control.log("== Recherche de l'ISO ==")

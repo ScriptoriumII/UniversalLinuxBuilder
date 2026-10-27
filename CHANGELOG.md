@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.0.26
+- **Fedora : la construction va maintenant jusqu'à Anaconda, mais l'échec final est opaque.** Journal reçu : clonage (f43 en repli) OK, 1839 RPM téléchargés (2,18 Gio), puis « An error occurred during the transaction: The transaction process has ended with errors » ; le « No such file or directory: '/usr/sbin/load_policy' » qui suit n'est qu'un symptôme de sortie, pas la cause.
+- La cause réelle (paquet, scriptlet, conflit) est dans les journaux d'Anaconda/dnf5, pas dans `lmc.log`. En cas d'échec, la construction affiche maintenant un **« Diagnostic Fedora »** : lignes d'erreur de `packaging.log`, `program.log`, `anaconda.log`, `dnf5.log`… puis la fin de `lmc.log`. La queue de sortie conservée dans le message d'échec passe de 1800 à 6000 caractères.
+- Outil de construction Fedora ajouté : `load_policy` (paquet `policycoreutils`), pour supprimer l'erreur de sortie secondaire. À réinstaller via « Installer les outils ».
+- **Non résolu** : la cause de la transaction échouée est inconnue tant que le diagnostic n'a pas été lu. Hypothèse la plus probable : kickstart f43 utilisé avec `--releasever 44` (paquets renommés ou retirés). Voie propre : kiwi (non implémentée).
+
 ## 2.0.25
 - **Destination et nom de l'ISO au choix** (onglet ISO, groupe « Destination de l'ISO »). Un dossier (bouton Parcourir) et un nom de fichier, mémorisés d'un lancement à l'autre. Dossier vide : la boîte de dialogue habituelle s'ouvre à chaque construction. Nom vide : nom automatique `ULB_<distribution>_<version>_<date>.iso`.
 - Valable pour Debian, Fedora, Arch Linux et pour le remaster Gentoo/Slackware. Le nom est nettoyé (caractères interdits sous Windows remplacés par `_`, noms réservés comme CON évités, `.iso` ajouté) ; si plusieurs ISO sont produites, `_1`, `_2`… sont ajoutés ; un fichier existant n'est **jamais écrasé** (`-2`, `-3`…). Un dossier mémorisé qui n'existe plus provoque un avertissement.

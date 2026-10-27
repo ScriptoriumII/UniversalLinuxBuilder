@@ -233,3 +233,10 @@ def test_build_uses_custom_iso_name_without_overwriting(
             str(destination), "Xfce", dict(options), Control()
         )
         assert Path(files[0]["file"]).name == expected
+
+
+def test_fedora_failure_prints_anaconda_diagnostic():
+    script = fedora_script("/var/tmp/x", "44", ["firefox"], "Aucun")
+    assert "Diagnostic Fedora" in script
+    assert "packaging.log" in script and "dnf5.log" in script
+    assert script.index("Diagnostic Fedora") > script.index("livemedia-creator")
