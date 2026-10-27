@@ -90,6 +90,7 @@ Un dossier de sortie contient : `ULB_<famille>_<version>_<date-heure>.iso`, `SHA
 
 - Arch Linux : ISO live **sans installateur graphique** (Calamares n'est que dans l'AUR).
 - Fedora : `--no-virt` exécute Anaconda dans l'environnement WSL ; utiliser un WSL Fedora dédié.
+- Fedora 44 et plus : plus de kickstarts officiels (images construites avec kiwi). L'application se rabat sur la branche la plus récente disponible, sans garantie ; la voie kiwi n'est pas implémentée.
 - Les noms de paquets sont validés par l'étape « Analyser les paquets » ; certains (ex. `lightdm-gtk` sous Fedora) restent à confirmer.
 - Le test QEMU sans KVM (WSL imbriqué) est lent : prévoir 120–240 s.
 - L'exécutable (`tools/build_exe.bat`, PyInstaller) n'est pas testé automatiquement.

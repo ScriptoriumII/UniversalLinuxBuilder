@@ -3746,6 +3746,16 @@ class UniversalLinuxBuilder(
                 else ""
             )
             + (
+                "Fedora 44 et plus : Fedora ne publie plus de kickstarts "
+                "pour ces versions (images construites avec kiwi). "
+                "L'application se rabat sur la branche la plus récente "
+                "disponible ; ce repli n'est pas validé et peut échouer.\n\n"
+                if family == "Fedora"
+                and self.release.currentText().isdigit()
+                and int(self.release.currentText()) >= 44
+                else ""
+            )
+            + (
                 "Arch Linux : l'ISO sera un système live "
                 "sans installateur graphique (Calamares n'est "
                 "disponible que dans l'AUR).\n\n"

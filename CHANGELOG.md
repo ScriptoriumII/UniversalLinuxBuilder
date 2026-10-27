@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.0.22
+- **Fedora 44 : « Remote branch f44 not found »** (construction échouée dès le clonage des kickstarts). Cause, vérifiée dans la discussion Fedora « Custom live iso F44? » : les images officielles de Fedora 44 ne sont plus construites avec des kickstarts mais avec **kiwi** ; le dépôt `fedora-kickstarts` n'a donc pas de branche `f44`.
+- La construction liste les branches `fNN` du dépôt et choisit **la branche exacte si elle existe, sinon la plus récente inférieure** (tri numérique), en affichant un avertissement explicite. Réseau en panne ou aucune branche : message distinct et clair au lieu d'un « clonage impossible » générique.
+- La confirmation de construction prévient pour Fedora 44 et plus que le repli n'est pas validé.
+- **Non résolu : ce repli n'est pas une garantie.** Un kickstart de la version précédente avec `--releasever 44` peut échouer plus loin (paquets renommés) ou produire une image incomplète. La voie officielle pour Fedora 44 est kiwi (profil `Workstation-Live` des descriptions kiwi de Fedora) : non implémentée, à faire dans une version dédiée.
+
 ## 2.0.21
 - **Fedora : l'analyse des paquets n'était jamais validée, donc « Créer l'ISO » restait bloqué** (« L'analyse des paquets doit être validée avant la construction »). Cause : `dnf5 --assumeno` calcule la transaction puis répond « non » à la confirmation, ce qui se termine par le **code 1** (« Operation aborted by the user »). L'application exigeait le code 0. Le verdict regarde maintenant le contenu : transaction calculée (tableau lu ou « Transaction Summary ») sans message d'échec ; code 0 ou 1 acceptés pour Fedora.
 - Les vrais échecs restent refusés et expliqués : `Problem`, `Failed to resolve`, `No match for argument`, `Cannot find a package`, code autre que 0/1, ou aucune transaction calculée. Le message d'avertissement et le journal indiquent désormais la raison.

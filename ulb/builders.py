@@ -175,6 +175,44 @@ def fedora_post_lines(release, options):
     return lines
 
 
+KICKSTARTS_URL = "https://pagure.io/fedora-kickstarts.git"
+
+
+def fedora_clone_command(release):
+    """Clone les kickstarts officiels.
+
+    Depuis Fedora 44 les images officielles sont construites avec kiwi :
+    la branche f<version> n'existe plus dans fedora-kickstarts. À défaut,
+    on utilise la branche numérique la plus récente qui existe (repli
+    signalé en clair, non validé) plutôt que d'échouer sans explication."""
+
+    return (
+        'want="f' + release + '"; '
+        "raw=$(git ls-remote --heads " + KICKSTARTS_URL + ") "
+        "|| { echo 'Liste des branches impossible (réseau ?) : "
+        + KICKSTARTS_URL + "' >&2; exit 1; }; "
+        "heads=$(printf '%s\\n' \"$raw\" | sed 's#.*refs/heads/##' "
+        "| grep -E '^f[0-9]+$' | sort -V); "
+        'if printf "%s\\n" "$heads" | grep -qx "$want"; then br="$want"; '
+        "else "
+        "br=$(printf '%s\\n' \"$heads\" | awk -v r=" + release
+        + " '{n=substr($0,2)+0; if (n<r) print}' | tail -n 1); "
+        'if [ -z "$br" ]; then '
+        "echo \"Aucune branche de kickstarts utilisable (cherchée : "
+        "$want). Fedora ne les publie plus pour cette version.\" >&2; "
+        "exit 1; fi; "
+        'echo "ATTENTION : la branche $want n\'existe pas (Fedora ne '
+        "construit plus ses images live avec des kickstarts depuis la "
+        'version 44, elles utilisent kiwi). Repli sur $br : non validé, '
+        'la construction peut échouer ou produire une image incomplète."; '
+        "fi; "
+        'echo "Clonage des kickstarts : branche $br"; '
+        'git clone --depth 1 --branch "$br" ' + KICKSTARTS_URL
+        + " kickstarts "
+        "|| { echo \"Clonage impossible : $br\" >&2; exit 1; }; "
+    )
+
+
 def fedora_script(workspace, release, packages, desktop, options=None):
     if not release.isdigit():
         raise RuntimeError(
@@ -217,13 +255,8 @@ def fedora_script(workspace, release, packages, desktop, options=None):
         "| grep '/fedora-live-base[.]ks$' "
         "| head -n 1 || true); "
         'if [ -z "$base" ]; then '
-        'echo "Kickstarts absents des paquets : clonage git '
-        '(pagure.io/fedora-kickstarts, branche f' + release + ')"; '
-        "git clone --depth 1 --branch f" + release + " "
-        "https://pagure.io/fedora-kickstarts.git kickstarts "
-        "|| { echo 'Clonage impossible (réseau, ou branche f"
-        + release + " absente).' >&2; exit 1; }; "
-        'base="$PWD/kickstarts/fedora-live-base.ks"; fi; '
+        + fedora_clone_command(release)
+        + 'base="$PWD/kickstarts/fedora-live-base.ks"; fi; '
         'test -f "$base" || { '
         'echo "fedora-live-base.ks introuvable" >&2; exit 1; }; '
         'dir=$(dirname "$base"); '

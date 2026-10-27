@@ -1,4 +1,6 @@
 import hashlib
+import os
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -122,3 +124,76 @@ def test_build_in_folder_with_existing_isos(fake_wsl, tmp_path, workspaces):
     sums = (destination / "SHA256SUMS").read_text().splitlines()
     assert sums[0] == "abc *autre.iso" and len(sums) == 3
     assert len(list(destination.glob("build_report_*.txt"))) == 2
+
+
+def syntax_ok(script):
+    return subprocess.run(["sh", "-n", "-c", script]).returncode == 0
+
+
+def run_clone(tmp_path, release, heads, fail=False):
+    """Exécute la sélection de branche avec un faux git."""
+
+    from ulb.builders import fedora_clone_command
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    git = bin_dir / "git"
+    listing = "\n".join(
+        "abc123\trefs/heads/" + name for name in heads
+    )
+    git.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = ls-remote ]; then\n'
+        + ("  exit 128\n" if fail else "  printf '%s\\n' '" + listing + "'\n")
+        + "  exit 0\nfi\n"
+        'echo "CLONE $*"\n'
+    )
+    git.chmod(0o755)
+
+    env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"])
+
+    return subprocess.run(
+        ["sh", "-c", "set -eu; " + fedora_clone_command(release)],
+        capture_output=True, text=True, env=env
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="sh requis")
+def test_fedora_clone_uses_exact_branch_when_present(tmp_path):
+    result = run_clone(tmp_path, "43", ["f41", "f42", "f43", "main"])
+
+    assert result.returncode == 0
+    assert "--branch f43" in result.stdout
+    assert "ATTENTION" not in result.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="sh requis")
+def test_fedora_clone_falls_back_when_branch_missing(tmp_path):
+    result = run_clone(tmp_path, "44", ["f41", "f42", "f43", "f9", "main"])
+
+    assert result.returncode == 0
+    assert "--branch f43" in result.stdout
+    assert "la branche f44 n'existe pas" in result.stdout
+    assert "kiwi" in result.stdout and "non validé" in result.stdout
+
+    # Tri numérique : f9 n'est pas la « dernière » branche.
+    assert "--branch f9 " not in result.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="sh requis")
+def test_fedora_clone_explains_missing_and_network_errors(tmp_path):
+    result = run_clone(tmp_path, "44", ["main"])
+    assert result.returncode == 1
+    assert "Aucune branche de kickstarts utilisable" in result.stderr
+
+    result = run_clone(tmp_path, "44", [], fail=True)
+    assert result.returncode == 1
+    assert "réseau" in result.stderr
+
+
+def test_fedora_script_embeds_clone_and_stays_valid_sh():
+    script = fedora_script("/w", "44", ["a"], "Xfce", {})
+
+    assert "git ls-remote --heads" in script
+    assert "Remote branch" not in script
+    assert syntax_ok(script)

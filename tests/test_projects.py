@@ -61,7 +61,8 @@ def test_fedora_kickstarts_have_a_git_fallback():
     assert fedora_install_command(["lorax"]) == "dnf5 -y install lorax"
 
     script = fedora_script("/var/tmp/x", "44", ["a"], "Xfce")
-    assert "git clone --depth 1 --branch f44" in script
+    assert 'want="f44"' in script
+    assert 'git clone --depth 1 --branch "$br"' in script
     assert "pagure.io/fedora-kickstarts" in script
 
 
