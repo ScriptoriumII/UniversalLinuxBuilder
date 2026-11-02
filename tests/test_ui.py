@@ -522,3 +522,27 @@ def test_checkbox_indicator_is_styled():
 
         icon = sheet.split("image: url(")[1].split(")")[0]
         assert Path(icon).is_file()
+
+
+def test_update_section_and_check(fake_wsl, monkeypatch):
+    from ulb import ui_update
+
+    app, window = make_window(fake_wsl, monkeypatch)
+    assert window.update_auto.isChecked()
+    assert not window.update_apply_button.isEnabled()
+
+    monkeypatch.setattr(
+        ui_update, "check_update",
+        lambda current: {
+            "current": current, "latest": "99.0.0", "newer": True,
+            "notes": "## 99.0.0\n- nouveau"
+        }
+    )
+    window.check_for_update(silent=False)
+    pump(app, lambda: window.update_apply_button.isEnabled(), 5)
+
+    assert "99.0.0" in window.update_status.text()
+    assert "nouveau" in window.update_notes.toPlainText()
+
+    window.update_auto.setChecked(False)
+    assert window.config["auto_update"] is False

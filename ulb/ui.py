@@ -23,6 +23,7 @@ from .catalog import (
 from .remaster import REMASTER_FAMILIES
 from .output import check_folder, clean_iso_name
 from .ui_advanced import AdvancedMixin
+from .ui_update import UpdateMixin
 from .vanilla import desktop_packages, vanilla_note, vanilla_supported
 from .ui_remaster import RemasterMixin
 from .ui_ventoy import VentoyMixin
@@ -31,7 +32,7 @@ from .wsl import CANCELLED, run
 
 
 class UniversalLinuxBuilder(
-    RemasterMixin, AdvancedMixin, VentoyMixin, QMainWindow
+    RemasterMixin, AdvancedMixin, VentoyMixin, UpdateMixin, QMainWindow
 ):
 
     def __init__(self):
@@ -1955,6 +1956,9 @@ class UniversalLinuxBuilder(
         # ----------------------------------------------------
         # SOUS-ONGLET 3 : ASSOCIATIONS
         # ----------------------------------------------------
+
+        update_layout = section("Mises à jour")
+        self.build_update_section(update_layout)
 
         associations_layout = section("Associations")
 

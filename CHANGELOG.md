@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.0.29
+- **Mise à jour automatique depuis GitHub** (plus besoin de `git pull`). Au démarrage (désactivable), l'application lit `ulb/constants.py` de la branche `main` ; si la version est plus récente, elle propose de mettre à jour (un refus n'est pas redemandé pour la même version). Nouveau sous-onglet **Configuration > Mises à jour** : « Vérifier maintenant », « Mettre à jour », lien vers la page GitHub, case « Vérifier au démarrage », nouveautés tirées du `CHANGELOG.md`.
+- Application : dossier cloné (`.git` + git présent) → `git pull --ff-only` (échoue proprement et le dit si des modifications locales gênent) ; sinon archive ZIP de `main` extraite dans le dossier de l'application (chemins suspects refusés, `.venv` intact). `requirements.txt` modifié → `pip install -r` automatique. Réglages et projets (dans `%APPDATA%`) ne sont pas touchés. **Relancer l'application ensuite.**
+- Une vérification ou mise à jour ne bloque pas une construction, et est refusée pendant une opération en cours.
+- Dépôt privé : définir la variable d'environnement `ULB_GITHUB_TOKEN` (jeton jamais enregistré). Hors ligne : la vérification échoue en silence au démarrage.
+- Testé : lecture de la vraie version distante (2.0.28 lue depuis GitHub), mise à jour par `git pull` sur un dépôt local, par ZIP, refus d'un ZIP piégé. **Non testé** : application complète sur un vrai Windows, ni `pip` sur un `.venv`.
+- **Première fois** : cette version doit être récupérée une dernière fois par `git pull` ; les suivantes se récupèrent depuis l'application.
+
 ## 2.0.28
 - **Onglet ISO : suppression de « Tester le démarrage (QEMU) »** (bouton, mode UEFI/BIOS, délai, aperçu de capture), redondant avec l'onglet Virtualisation. Le journal de construction occupe maintenant toute la largeur. La note de l'onglet renvoie à Virtualisation.
 - Le module `vmtest.py` (test par capture d'écran) reste dans le code mais n'est plus appelé par l'interface ; la rubrique `boot_smoke_test` des projets enregistrés reste vide (format inchangé, anciens projets lisibles).
